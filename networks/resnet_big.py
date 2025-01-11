@@ -73,17 +73,39 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, num_blocks, in_channel=3, zero_init_residual=False):
+    def __init__(self, block_class, num_blocks, in_channel=3, zero_init_residual=False):
+        """
+        Initializes the ResNet model.
+
+        Args:
+            block (nn.Module): The block type to be used (e.g., BasicBlock or Bottleneck).
+            num_blocks (list of int): A list containing the number of blocks for each of the four layers.
+            in_channel (int, optional): Number of input channels. Default is 3.
+            zero_init_residual (bool, optional): If True, initializes the last BatchNorm layer in each residual branch to zero. Default is False.
+
+        Attributes:
+            in_planes (int): Number of input planes for the first convolutional layer.
+            conv1 (nn.Conv2d): First convolutional layer.
+            bn1 (nn.BatchNorm2d): Batch normalization layer after the first convolutional layer.
+            layer1 (nn.Sequential): First layer of residual blocks.
+            layer2 (nn.Sequential): Second layer of residual blocks.
+            layer3 (nn.Sequential): Third layer of residual blocks.
+            layer4 (nn.Sequential): Fourth layer of residual blocks.
+            avgpool (nn.AdaptiveAvgPool2d): Adaptive average pooling layer.
+
+        Initializes the weights of the convolutional and batch normalization layers.
+        If zero_init_residual is True, initializes the last BatchNorm layer in each residual branch to zero.
+        """
         super(ResNet, self).__init__()
         self.in_planes = 64
 
         self.conv1 = nn.Conv2d(in_channel, 64, kernel_size=3, stride=1, padding=1,
                                bias=False)
         self.bn1 = nn.BatchNorm2d(64)
-        self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
-        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
-        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
-        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
+        self.layer1 = self._make_layer(block_class, 64, num_blocks[0], stride=1)
+        self.layer2 = self._make_layer(block_class, 128, num_blocks[1], stride=2)
+        self.layer3 = self._make_layer(block_class, 256, num_blocks[2], stride=2)
+        self.layer4 = self._make_layer(block_class, 512, num_blocks[3], stride=2)
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
 
         for m in self.modules():
@@ -104,13 +126,25 @@ class ResNet(nn.Module):
                 elif isinstance(m, BasicBlock):
                     nn.init.constant_(m.bn2.weight, 0)
 
-    def _make_layer(self, block, planes, num_blocks, stride):
+    def _make_layer(self, block_class, planes, num_blocks, stride):
+        """
+        Creates a sequential layer composed of multiple blocks.
+
+        Args:
+            block (nn.Module): The block class to be used for creating the layer.
+            planes (int): The number of output channels for each block.
+            num_blocks (int): The number of blocks to be stacked in the layer.
+            stride (int): The stride to be used for the first block in the layer.
+
+        Returns:
+            nn.Sequential: A sequential container of the stacked blocks.
+        """
         strides = [stride] + [1] * (num_blocks - 1)
         layers = []
         for i in range(num_blocks):
             stride = strides[i]
-            layers.append(block(self.in_planes, planes, stride))
-            self.in_planes = planes * block.expansion
+            layers.append(block_class(self.in_planes, planes, stride))
+            self.in_planes = planes * block_class.expansion
         return nn.Sequential(*layers)
 
     def forward(self, x, layer=100):
@@ -122,7 +156,62 @@ class ResNet(nn.Module):
         out = self.avgpool(out)
         out = torch.flatten(out, 1)
         return out
+    
+    
+class HierarchicalResNet(ResNet):
+    def __init__(self, block_class, num_blocks, is_output_layer=[False, False, False, True ], in_channel=3, zero_init_residual=False):
+        """
+        Initializes the HierarchicalResNet model.
 
+        Args:
+            block (nn.Module): The block type to be used (e.g., BasicBlock or Bottleneck).
+            num_blocks (list of int): A list containing the number of blocks for each of the four layers.
+            is_output_layer (list of bool): A list containing the flag for each of the four layers if it should be an output layer.
+            in_channel (int, optional): Number of input channels. Default is 3.
+            zero_init_residual (bool, optional): If True, initializes the last BatchNorm layer in each residual branch to zero. Default is False.
+
+        Attributes:
+            in_planes (int): Number of input planes for the first convolutional layer.
+            conv1 (nn.Conv2d): First convolutional layer.
+            bn1 (nn.BatchNorm2d): Batch normalization layer after the first convolutional layer.
+            layer1 (nn.Sequential): First layer of residual blocks.
+            layer2 (nn.Sequential): Second layer of residual blocks.
+            layer3 (nn.Sequential): Third layer of residual blocks.
+            layer4 (nn.Sequential): Fourth layer of residual blocks.
+            avgpool (nn.AdaptiveAvgPool2d): Adaptive average pooling layer.
+
+        Initializes the weights of the convolutional and batch normalization layers.
+        If zero
+        """
+        super(HierarchicalResNet, self).__init__(block_class, num_blocks, in_channel, zero_init_residual)
+        self.is_output_layer = is_output_layer
+        self.num_output_layers = sum(is_output_layer)
+    
+    def forward(self, x, layer=100):
+        stacked_out_tensor = []
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.layer1(out)
+        if self.is_output_layer[0]:
+            prepared_out = self.avgpool(out)
+            prepared_out = torch.flatten(prepared_out, 1)
+            stacked_out_tensor.append(prepared_out)
+        out = self.layer2(out)
+        if self.is_output_layer[1]:
+            prepared_out = self.avgpool(out)
+            prepared_out = torch.flatten(prepared_out, 1)
+            stacked_out_tensor.append(prepared_out)
+        out = self.layer3(out)
+        if self.is_output_layer[2]:
+            prepared_out = self.avgpool(out)
+            prepared_out = torch.flatten(prepared_out, 1)
+            stacked_out_tensor.append(prepared_out)
+        out = self.layer4(out)
+        if self.is_output_layer[3]:
+            prepared_out = self.avgpool(out)
+            prepared_out = torch.flatten(prepared_out, 1)
+            stacked_out_tensor.append(prepared_out)
+
+        return torch.stack(stacked_out_tensor, dim=1)
 
 def resnet18(**kwargs):
     return ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
@@ -140,6 +229,8 @@ def resnet101(**kwargs):
     return ResNet(Bottleneck, [3, 4, 23, 3], **kwargs)
 
 
+# A dictionary that maps the model name to the model class and the number of output channels.
+# Those output channels are used for the projection head as the input dimension.
 model_dict = {
     'resnet18': [resnet18, 512],
     'resnet34': [resnet34, 512],
@@ -166,6 +257,7 @@ class SupConResNet(nn.Module):
     """backbone + projection head"""
     def __init__(self, name='resnet50', head='mlp', feat_dim=128):
         super(SupConResNet, self).__init__()
+        # model_fun is the model class, e.g., resnet50
         model_fun, dim_in = model_dict[name]
         self.encoder = model_fun()
         if head == 'linear':
@@ -184,6 +276,22 @@ class SupConResNet(nn.Module):
         feat = self.encoder(x)
         feat = F.normalize(self.head(feat), dim=1)
         return feat
+
+
+class HierarchicalSupConResNet(SupConResNet):
+    def __init__(self, name='resnet18', head='mlp', feat_dim=128, is_output_layer=[False, False, False, True]):
+        super(HierarchicalSupConResNet, self).__init__(name, head, feat_dim)
+        self.num_output_layers = sum(is_output_layer)
+        self.encoder = HierarchicalResNet(BasicBlock, [2, 2, 2, 2], is_output_layer)
+
+    def forward(self, x):
+        stacked_out_tensor = self.encoder(x)
+        if self.num_output_layers != stacked_out_tensor.shape[1]:
+            raise ValueError(f"Number of output layers ({self.num_output_layers}) does not match the number of output layers in the encoder ({stacked_out_tensor.shape[1]})")
+        # For each of the output layers, apply the projection head
+        for i in range(self.num_output_layers):
+            stacked_out_tensor[:, i, :] = F.normalize(self.head(stacked_out_tensor[:, i, :]), dim=1)
+        return stacked_out_tensor
 
 
 class SupCEResNet(nn.Module):
