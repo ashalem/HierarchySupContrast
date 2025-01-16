@@ -126,10 +126,13 @@ class HierarchySupConLoss(nn.Module):
         if not isinstance(level_weights, (list, tuple)):
             raise TypeError(f'Expected level_weights to be a list or tuple, but got {type(level_weights)}')
         self.num_levels = len(level_weights)
-        self.level_weights = torch.tensor(level_weights, dtype=torch.float32)
-        if self.level_weights.sum() == 0:
+        
+        # Convert to tensor and register as a buffer so it moves with the module
+        weights = torch.tensor(level_weights, dtype=torch.float32)
+        if weights.sum() == 0:
             raise ValueError('Sum of level_weights must be greater than 0.')
-        self.level_weights = self.level_weights / self.level_weights.sum()  # Normalize weights
+        normalized_weights = weights / weights.sum()  # Normalize weights
+        self.register_buffer('level_weights', normalized_weights)  # This will move with the module to GPU
 
         self.temperature = temperature
         self.contrast_mode = contrast_mode
