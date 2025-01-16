@@ -349,10 +349,10 @@ class HierarchicalSupConResNet(SupConResNet):
 
     def forward(self, x):
         print(f"\nHierarchicalSupConResNet forward:")
-        print(f"Input shape: {x.shape}")
+        print(f"Input shape: {x.shape}, device: {x.device}")
         
         stacked_out_tensor = self.encoder(x)
-        print(f"After encoder shape: {stacked_out_tensor.shape}")
+        print(f"After encoder shape: {stacked_out_tensor.shape}, device: {stacked_out_tensor.device}")
         
         if self.num_output_layers != stacked_out_tensor.shape[1]:
             raise ValueError(
@@ -360,18 +360,18 @@ class HierarchicalSupConResNet(SupConResNet):
                 f"the number of output layers in the encoder ({stacked_out_tensor.shape[1]})"
             )
         
-        # Create a new tensor instead of modifying in-place
         normalized_tensor = torch.zeros_like(stacked_out_tensor)
+        print(f"Normalized tensor device: {normalized_tensor.device}")
         
         # For each of the output layers, apply the projection head
         for i in range(self.num_output_layers):
             before_head = stacked_out_tensor[:, i, :]
-            print(f"Layer {i} before head: {before_head.shape}")
+            print(f"Layer {i} before head: {before_head.shape}, device: {before_head.device}")
             after_head = self.head(before_head)
-            print(f"Layer {i} after head: {after_head.shape}")
+            print(f"Layer {i} after head: {after_head.shape}, device: {after_head.device}")
             normalized_tensor[:, i, :] = F.normalize(after_head, dim=1)
             
-        print(f"Final output shape: {normalized_tensor.shape}")
+        print(f"Final output shape: {normalized_tensor.shape}, device: {normalized_tensor.device}")
         return normalized_tensor
 
 

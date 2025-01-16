@@ -74,35 +74,50 @@ def set_model():
 def train(train_loader, model, criterion, optimizer, epoch):
     """One epoch training"""
     model.train()
+    print(f"\nModel device: {next(model.parameters()).device}")
+    print(f"Criterion device: {criterion.level_weights.device}")
 
-    # Track average batch processing time
     batch_time = AverageMeter()
-    # Track average data loading time
     data_time = AverageMeter()
-    # Track average loss values
     losses = AverageMeter()
 
     end = time.time()
     for idx, (images, labels) in enumerate(train_loader):
         data_time.update(time.time() - end)
         
+        # Print initial devices
+        print(f"\nInitial devices:")
+        print(f"Images device: {images[0].device}")
+        print(f"Labels devices: {labels[0].device}, {labels[1].device}")
+
         # Unpack hierarchical labels
         superclass_labels, class_labels = labels
         labels = torch.stack([superclass_labels, class_labels], dim=1)
+        print(f"Stacked labels device: {labels.device}")
 
         images = torch.cat([images[0], images[1]], dim=0)
+        print(f"Concatenated images device: {images.device}")
+        
         if torch.cuda.is_available():
             images = images.cuda(non_blocking=True)
             labels = labels.cuda(non_blocking=True)
+            print(f"\nAfter CUDA transfer:")
+            print(f"Images device: {images.device}")
+            print(f"Labels device: {labels.device}")
+        
         bsz = labels.shape[0]
 
         # Forward pass
         features = model(images)
+        print(f"Features after model device: {features.device}")
+        
         f1, f2 = torch.split(features, [bsz, bsz], dim=0)
         features = torch.cat([f1.unsqueeze(2), f2.unsqueeze(2)], dim=2)
+        print(f"Features after processing device: {features.device}")
         
         # Compute loss
         loss = criterion(features, labels)
+        print(f"Loss device: {loss.device}")
         losses.update(loss.item(), bsz)
 
         # SGD

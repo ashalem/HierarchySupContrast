@@ -152,8 +152,10 @@ class HierarchySupConLoss(nn.Module):
             Tensor: A scalar loss value.
         """
         print(f"\nHierarchySupConLoss forward:")
-        print(f"Features shape: {features.shape}")
-        print(f"Labels shape: {labels.shape}")
+        print(f"Features shape: {features.shape}, device: {features.device}")
+        print(f"Labels shape: {labels.shape}, device: {labels.device}")
+        print(f"Level weights device: {self.level_weights.device}")
+        print(f"SupConLoss temperature device: {self.supcon_loss.temperature.device}")
         
         batch_size = features.shape[0]
         num_levels = features.shape[1]
@@ -167,15 +169,16 @@ class HierarchySupConLoss(nn.Module):
             level_features = features[:, levelIdx, :, :]
             level_labels = labels[:, levelIdx]
             print(f"\nLevel {levelIdx}:")
-            print(f"Level features shape: {level_features.shape}")
-            print(f"Level labels shape: {level_labels.shape}")
+            print(f"Level features shape: {level_features.shape}, device: {level_features.device}")
+            print(f"Level labels shape: {level_labels.shape}, device: {level_labels.device}")
             
             loss = self.supcon_loss(level_features, level_labels)
-            print(f"Level {levelIdx} loss: {loss.item():.4f}")
+            print(f"Level {levelIdx} loss: {loss.item():.4f}, device: {loss.device}")
             level_losses.append(loss)
             
         level_losses = torch.stack(level_losses)
+        print(f"Stacked losses device: {level_losses.device}")
         weighted_loss = torch.sum(level_losses * self.level_weights)
-        print(f"Final weighted loss: {weighted_loss.item():.4f}")
+        print(f"Final weighted loss: {weighted_loss.item():.4f}, device: {weighted_loss.device}")
         
         return weighted_loss    
