@@ -12,7 +12,7 @@ from losses import HierarchySupConLoss
 
 def set_loader():
     # Data loading parameters
-    batch_size = 256
+    batch_size = 512
     num_workers = 2
     data_folder = './datasets/'
 
@@ -181,7 +181,7 @@ def main():
     # weight_decay=1e-4: L2 regularization coefficient that prevents overfitting
     #                    by penalizing large weights in the model
     optimizer = torch.optim.SGD(model.parameters(),
-                               lr=0.2,
+                               lr=0.25,
                                momentum=0.9,
                                weight_decay=1e-4)
 
