@@ -158,60 +158,118 @@ class ResNet(nn.Module):
         return out
     
     
+class RepeatAdapter(nn.Module):
+    def __init__(self, repeat_factor):
+        super().__init__()
+        self.repeat_factor = repeat_factor
+    
+    def forward(self, x):
+        return x.repeat_interleave(self.repeat_factor, dim=-1)
+
+class PoolAdapter(nn.Module):
+    def __init__(self, pool_factor):
+        super().__init__()
+        self.pool_factor = pool_factor
+    
+    def forward(self, x):
+        return x.view(-1, self.pool_factor, x.size(-1) // self.pool_factor).mean(dim=1)
+
 class HierarchicalResNet(ResNet):
-    def __init__(self, block_class, num_blocks, is_output_layer=[False, False, False, True ], in_channel=3, zero_init_residual=False):
-        """
-        Initializes the HierarchicalResNet model.
-
-        Args:
-            block (nn.Module): The block type to be used (e.g., BasicBlock or Bottleneck).
-            num_blocks (list of int): A list containing the number of blocks for each of the four layers.
-            is_output_layer (list of bool): A list containing the flag for each of the four layers if it should be an output layer.
-            in_channel (int, optional): Number of input channels. Default is 3.
-            zero_init_residual (bool, optional): If True, initializes the last BatchNorm layer in each residual branch to zero. Default is False.
-
-        Attributes:
-            in_planes (int): Number of input planes for the first convolutional layer.
-            conv1 (nn.Conv2d): First convolutional layer.
-            bn1 (nn.BatchNorm2d): Batch normalization layer after the first convolutional layer.
-            layer1 (nn.Sequential): First layer of residual blocks.
-            layer2 (nn.Sequential): Second layer of residual blocks.
-            layer3 (nn.Sequential): Third layer of residual blocks.
-            layer4 (nn.Sequential): Fourth layer of residual blocks.
-            avgpool (nn.AdaptiveAvgPool2d): Adaptive average pooling layer.
-
-        Initializes the weights of the convolutional and batch normalization layers.
-        If zero
-        """
+    def __init__(self, block_class, num_blocks, is_output_layer=[False, False, False, True], 
+                 in_channel=3, zero_init_residual=False, scale_up=False):
         super(HierarchicalResNet, self).__init__(block_class, num_blocks, in_channel, zero_init_residual)
         self.is_output_layer = is_output_layer
         self.num_output_layers = sum(is_output_layer)
+        self.scale_up = scale_up
+        
+        # Add dimension matching
+        expansion = block_class.expansion
+        self.dims = [64 * expansion, 128 * expansion, 256 * expansion, 512 * expansion]
+        
+        # Set target dimension based on scaling direction
+        if scale_up:
+            self.target_dim = max(self.dims)  # Scale up to 512
+        else:
+            self.target_dim = self.dims[0]    # Scale down to 64
+        
+        # Create adapters for each output layer
+        self.adapters = nn.ModuleList()
+        for i, is_output in enumerate(is_output_layer):
+            if not is_output:
+                continue
+            if scale_up:
+                if self.dims[i] < self.target_dim:
+                    self.adapters.append(nn.Upsample(size=self.target_dim, mode='linear'))
+                else:
+                    self.adapters.append(nn.Identity())
+            else:  # scale down
+                if self.dims[i] > self.target_dim:
+                    self.adapters.append(nn.AdaptiveAvgPool1d(self.target_dim))
+                else:
+                    self.adapters.append(nn.Identity())
     
     def forward(self, x, layer=100):
+        if self.num_output_layers == 0:
+            return None
+
+        print(f"\nHierarchicalResNet forward:")
+        print(f"Input shape: {x.shape}")
+
         stacked_out_tensor = []
+        adapter_idx = 0
+        
         out = F.relu(self.bn1(self.conv1(x)))
         out = self.layer1(out)
         if self.is_output_layer[0]:
             prepared_out = self.avgpool(out)
+            print(f"Layer1 after avgpool: {prepared_out.shape}")
             prepared_out = torch.flatten(prepared_out, 1)
+            print(f"Layer1 after flatten: {prepared_out.shape}")
+            prepared_out = self.adapters[adapter_idx](prepared_out.unsqueeze(1))
+            prepared_out = prepared_out.squeeze(1)
+            print(f"Layer1 after adapter: {prepared_out.shape}")
             stacked_out_tensor.append(prepared_out)
+            adapter_idx += 1
+            
         out = self.layer2(out)
         if self.is_output_layer[1]:
             prepared_out = self.avgpool(out)
+            print(f"Layer2 after avgpool: {prepared_out.shape}")
             prepared_out = torch.flatten(prepared_out, 1)
+            print(f"Layer2 after flatten: {prepared_out.shape}")
+            prepared_out = self.adapters[adapter_idx](prepared_out.unsqueeze(1))
+            prepared_out = prepared_out.squeeze(1)
+            print(f"Layer2 after adapter: {prepared_out.shape}")
             stacked_out_tensor.append(prepared_out)
+            adapter_idx += 1
+            
         out = self.layer3(out)
         if self.is_output_layer[2]:
             prepared_out = self.avgpool(out)
+            print(f"Layer3 after avgpool: {prepared_out.shape}")
             prepared_out = torch.flatten(prepared_out, 1)
+            print(f"Layer3 after flatten: {prepared_out.shape}")
+            prepared_out = self.adapters[adapter_idx](prepared_out.unsqueeze(1))
+            prepared_out = prepared_out.squeeze(1)
+            print(f"Layer3 after adapter: {prepared_out.shape}")
             stacked_out_tensor.append(prepared_out)
+            adapter_idx += 1
+            
         out = self.layer4(out)
         if self.is_output_layer[3]:
             prepared_out = self.avgpool(out)
+            print(f"Layer4 after avgpool: {prepared_out.shape}")
             prepared_out = torch.flatten(prepared_out, 1)
+            print(f"Layer4 after flatten: {prepared_out.shape}")
+            prepared_out = self.adapters[adapter_idx](prepared_out.unsqueeze(1))
+            prepared_out = prepared_out.squeeze(1)
+            print(f"Layer4 after adapter: {prepared_out.shape}")
             stacked_out_tensor.append(prepared_out)
+            adapter_idx += 1
 
-        return torch.stack(stacked_out_tensor, dim=1)
+        stacked = torch.stack(stacked_out_tensor, dim=1)
+        print(f"Final stacked tensor shape: {stacked.shape}")
+        return stacked
 
 def resnet18(**kwargs):
     return ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
@@ -232,7 +290,7 @@ def resnet101(**kwargs):
 # A dictionary that maps the model name to the model class and the number of output channels.
 # Those output channels are used for the projection head as the input dimension.
 model_dict = {
-    'resnet18': [resnet18, 512],
+    'resnet18': [resnet18, 64],
     'resnet34': [resnet34, 512],
     'resnet50': [resnet50, 2048],
     'resnet101': [resnet101, 2048],
@@ -279,19 +337,42 @@ class SupConResNet(nn.Module):
 
 
 class HierarchicalSupConResNet(SupConResNet):
-    def __init__(self, name='resnet18', head='mlp', feat_dim=128, is_output_layer=[False, False, False, True]):
+    def __init__(self, name='resnet18', head='mlp', feat_dim=128, 
+                 is_output_layer=[False, False, False, True], scale_up=False):
         super(HierarchicalSupConResNet, self).__init__(name, head, feat_dim)
         self.num_output_layers = sum(is_output_layer)
-        self.encoder = HierarchicalResNet(BasicBlock, [2, 2, 2, 2], is_output_layer)
+        self.encoder = HierarchicalResNet(
+            BasicBlock, [2, 2, 2, 2],
+            is_output_layer=is_output_layer,
+            scale_up=scale_up
+        )
 
     def forward(self, x):
+        print(f"\nHierarchicalSupConResNet forward:")
+        print(f"Input shape: {x.shape}")
+        
         stacked_out_tensor = self.encoder(x)
+        print(f"After encoder shape: {stacked_out_tensor.shape}")
+        
         if self.num_output_layers != stacked_out_tensor.shape[1]:
-            raise ValueError(f"Number of output layers ({self.num_output_layers}) does not match the number of output layers in the encoder ({stacked_out_tensor.shape[1]})")
+            raise ValueError(
+                f"Number of output layers ({self.num_output_layers}) does not match "
+                f"the number of output layers in the encoder ({stacked_out_tensor.shape[1]})"
+            )
+        
+        # Create a new tensor instead of modifying in-place
+        normalized_tensor = torch.zeros_like(stacked_out_tensor)
+        
         # For each of the output layers, apply the projection head
         for i in range(self.num_output_layers):
-            stacked_out_tensor[:, i, :] = F.normalize(self.head(stacked_out_tensor[:, i, :]), dim=1)
-        return stacked_out_tensor
+            before_head = stacked_out_tensor[:, i, :]
+            print(f"Layer {i} before head: {before_head.shape}")
+            after_head = self.head(before_head)
+            print(f"Layer {i} after head: {after_head.shape}")
+            normalized_tensor[:, i, :] = F.normalize(after_head, dim=1)
+            
+        print(f"Final output shape: {normalized_tensor.shape}")
+        return normalized_tensor
 
 
 class SupCEResNet(nn.Module):

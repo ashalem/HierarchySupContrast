@@ -151,41 +151,31 @@ class HierarchySupConLoss(nn.Module):
         Returns:
             Tensor: A scalar loss value.
         """
-        if len(features.shape) != 4:
-            raise ValueError(
-                f'Expected features with 4 dimensions [batch_size, num_levels, num_views, feature_dim], '
-                f'got {features.shape}'
-            )
+        print(f"\nHierarchySupConLoss forward:")
+        print(f"Features shape: {features.shape}")
+        print(f"Labels shape: {labels.shape}")
         
-        batch_size, num_levels, num_views, feature_dim = features.shape
+        batch_size = features.shape[0]
+        num_levels = features.shape[1]
+        num_views = features.shape[2]
         
-        if num_levels != self.num_levels:
-            raise ValueError(
-                f'Number of levels in features ({num_levels}) does not match '
-                f'number of level_weights ({self.num_levels}).'
-            )
-        
-        if labels.shape[0] != batch_size:
-            raise ValueError(
-                f'Number of labels ({labels.shape[0]}) does not match '
-                f'number of samples ({batch_size}).'
-            )
-            
-        if labels.shape[1] != num_levels:
-            raise ValueError(
-                f'Number of labels ({labels.shape[1]}) does not match '
-                f'number of levels ({num_levels}).'
-            )
-        
-        # Compute losses for all levels at once
-        featuresT = features.transpose(0, 1)  # Shape: [num_levels, batch_size, num_views, feature_dim]
-        labelsT = labels.transpose(0, 1)  # Shape: [num_levels, batch_size]
+        print(f"Batch size: {batch_size}, Num levels: {num_levels}, Num views: {num_views}")
         
         # Calculate loss for each level
-        level_losses = torch.stack([self.supcon_loss(featuresT[levelIdx], labelsT[levelIdx]) 
-                                  for levelIdx in range(num_levels)])
+        level_losses = []
+        for levelIdx in range(num_levels):
+            level_features = features[:, levelIdx, :, :]
+            level_labels = labels[:, levelIdx]
+            print(f"\nLevel {levelIdx}:")
+            print(f"Level features shape: {level_features.shape}")
+            print(f"Level labels shape: {level_labels.shape}")
+            
+            loss = self.supcon_loss(level_features, level_labels)
+            print(f"Level {levelIdx} loss: {loss.item():.4f}")
+            level_losses.append(loss)
+            
+        level_losses = torch.stack(level_losses)
+        weighted_loss = torch.sum(level_losses * self.level_weights)
+        print(f"Final weighted loss: {weighted_loss.item():.4f}")
         
-        # Multiply by weights and sum
-        loss = torch.sum(level_losses * self.level_weights)
-
-        return loss    
+        return weighted_loss    
