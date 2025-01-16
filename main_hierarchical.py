@@ -12,7 +12,7 @@ from losses import HierarchySupConLoss
 
 def set_loader():
     # Data loading parameters
-    batch_size = 128
+    batch_size = 256
     num_workers = 2
     data_folder = './datasets/'
 
@@ -58,8 +58,8 @@ def set_model():
     
     # Define loss with weights for each level
     criterion = HierarchySupConLoss(
-        level_weights=[1.0, 1.0],  # Equal weights for both levels
-        temperature=0.07
+        level_weights=[0.4, 0.6],  # More Weight for the second level
+        temperature=0.1 # same as in the paper
     )
 
     if torch.cuda.is_available():
@@ -176,8 +176,12 @@ def main():
     model, criterion = set_model()
 
     # Set up optimizer
+    # momentum=0.9: Adds a fraction (0.9) of the previous gradient to current gradient
+    #               This helps accelerate training and overcome local minima
+    # weight_decay=1e-4: L2 regularization coefficient that prevents overfitting
+    #                    by penalizing large weights in the model
     optimizer = torch.optim.SGD(model.parameters(),
-                               lr=0.05,
+                               lr=0.1,
                                momentum=0.9,
                                weight_decay=1e-4)
 
