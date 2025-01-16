@@ -179,9 +179,9 @@ def main():
     # Use Adam optimizer with a higher initial learning rate
     optimizer = torch.optim.Adam(model.parameters(),
                                lr=1e-2,  # Higher initial learning rate
-                               betas=(0.9, 0.999),  # Default momentum parameters for Adam
-                               eps=1e-8,            # Small constant for numerical stability
-                               weight_decay=1e-4    # L2 regularization factor
+                               betas=(0.9, 0.999),
+                               eps=1e-8,
+                               weight_decay=1e-4)
     
     # Simple cosine schedule without warmup
     total_epochs = 100
