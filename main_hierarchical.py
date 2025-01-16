@@ -176,26 +176,21 @@ def main():
     # Set up model and criterion
     model, criterion = set_model()
 
-    # Use Adam optimizer with a lower learning rate
+    # Use Adam optimizer with a higher initial learning rate
     optimizer = torch.optim.Adam(model.parameters(),
-                               lr=3e-4,  # Standard Adam learning rate
+                               lr=1e-3,  # Higher initial learning rate
                                betas=(0.9, 0.999),
                                eps=1e-8,
                                weight_decay=1e-4)
     
-    # Warmup scheduler
-    warmup_epochs = 10
+    # Simple cosine schedule without warmup
     total_epochs = 100
-    
-    def lr_lambda(epoch):
-        if epoch < warmup_epochs:
-            # Linear warmup
-            return epoch / warmup_epochs
-        else:
-            # Cosine decay
-            return 0.5 * (1 + math.cos(math.pi * (epoch - warmup_epochs) / (total_epochs - warmup_epochs)))
-    
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, 
+        T_max=total_epochs,
+        eta_min=1e-6  # Minimum learning rate
+    )
 
     # Training loop
     for epoch in range(1, total_epochs + 1):

@@ -121,7 +121,7 @@ class HierarchySupConLoss(nn.Module):
         contrast_mode (str, optional): Mode for contrastive loss, either 'all' or 'one'. Default is 'all'.
         base_temperature (float, optional): Base temperature for scaling. Default is 0.07.
     """
-    def __init__(self, level_weights, temperature=0.05, contrast_mode='all', base_temperature=0.07):
+    def __init__(self, level_weights, temperature=0.1, contrast_mode='all', base_temperature=0.1):
         super(HierarchySupConLoss, self).__init__()
         if not isinstance(level_weights, (list, tuple)):
             raise TypeError(f'Expected level_weights to be a list or tuple, but got {type(level_weights)}')
@@ -132,7 +132,7 @@ class HierarchySupConLoss(nn.Module):
         if weights.sum() == 0:
             raise ValueError('Sum of level_weights must be greater than 0.')
         normalized_weights = weights / weights.sum()  # Normalize weights
-        self.register_buffer('level_weights', normalized_weights)  # This will move with the module to GPU
+        self.register_buffer('level_weights', normalized_weights)
 
         self.temperature = temperature
         self.contrast_mode = contrast_mode
