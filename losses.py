@@ -155,7 +155,7 @@ class HierarchySupConLoss(nn.Module):
         print(f"Features shape: {features.shape}, device: {features.device}")
         print(f"Labels shape: {labels.shape}, device: {labels.device}")
         print(f"Level weights device: {self.level_weights.device}")
-        print(f"SupConLoss temperature device: {self.supcon_loss.temperature.device}")
+        print(f"SupConLoss temperature device: {self.supcon_loss.temperature}")
         
         batch_size = features.shape[0]
         num_levels = features.shape[1]
