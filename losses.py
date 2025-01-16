@@ -171,12 +171,12 @@ class HierarchySupConLoss(nn.Module):
         for levelIdx in range(num_levels):
             level_features = features[:, levelIdx, :, :]
             level_labels = labels[:, levelIdx]
-            print(f"\nLevel {levelIdx}:")
-            print(f"Level features shape: {level_features.shape}, device: {level_features.device}")
-            print(f"Level labels shape: {level_labels.shape}, device: {level_labels.device}")
+            # print(f"\nLevel {levelIdx}:")
+            # print(f"Level features shape: {level_features.shape}, device: {level_features.device}")
+            # print(f"Level labels shape: {level_labels.shape}, device: {level_labels.device}")
             
             loss = self.supcon_loss(level_features, level_labels)
-            print(f"Level {levelIdx} loss: {loss.item():.4f}, device: {loss.device}")
+            # print(f"Level {levelIdx} loss: {loss.item():.4f}, device: {loss.device}")
             level_losses.append(loss)
             
         level_losses = torch.stack(level_losses)
