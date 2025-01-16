@@ -5,6 +5,7 @@ import time
 import torch
 import torch.backends.cudnn as cudnn
 from torchvision import transforms, datasets
+import math
 
 from util import TwoCropTransform, AverageMeter
 from networks.resnet_big import HierarchicalSupConResNet
@@ -58,8 +59,8 @@ def set_model():
     
     # Define loss with weights for each level
     criterion = HierarchySupConLoss(
-        level_weights=[0.4, 0.6],  # More Weight for the second level
-        temperature=0.1 # same as in the paper
+        level_weights=[0.5, 0.5],  # Try equal weights first
+        temperature=0.07  # Lower temperature for sharper contrasts
     )
 
     if torch.cuda.is_available():
@@ -175,29 +176,41 @@ def main():
     # Set up model and criterion
     model, criterion = set_model()
 
-    # Set up optimizer
-    # momentum=0.9: Adds a fraction (0.9) of the previous gradient to current gradient
-    #               This helps accelerate training and overcome local minima
-    # weight_decay=1e-4: L2 regularization coefficient that prevents overfitting
-    #                    by penalizing large weights in the model
-    optimizer = torch.optim.SGD(model.parameters(),
-                               lr=0.1,
-                               momentum=0.9,
+    # Use Adam optimizer with a lower learning rate
+    optimizer = torch.optim.Adam(model.parameters(),
+                               lr=3e-4,  # Standard Adam learning rate
+                               betas=(0.9, 0.999),
+                               eps=1e-8,
                                weight_decay=1e-4)
+    
+    # Warmup scheduler
+    warmup_epochs = 10
+    total_epochs = 100
+    
+    def lr_lambda(epoch):
+        if epoch < warmup_epochs:
+            # Linear warmup
+            return epoch / warmup_epochs
+        else:
+            # Cosine decay
+            return 0.5 * (1 + math.cos(math.pi * (epoch - warmup_epochs) / (total_epochs - warmup_epochs)))
+    
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
     # Training loop
-    epochs = 100
-    for epoch in range(1, epochs + 1):
+    for epoch in range(1, total_epochs + 1):
         # Train for one epoch
         time1 = time.time()
         loss = train(train_loader, model, criterion, optimizer, epoch)
         time2 = time.time()
-        print('Epoch {}, total time {:.2f}, loss {:.3f}'.format(
-            epoch, time2 - time1, loss))
-
+        print('Epoch {}, total time {:.2f}, loss {:.3f}, lr {:.6f}'.format(
+            epoch, time2 - time1, loss, optimizer.param_groups[0]['lr']))
+        
+        scheduler.step()
+        
         # Save model
         if epoch % 50 == 0:
-            save_file = './save/ckpt_epoch_{epoch}.pth'
+            save_file = f'./save/ckpt_epoch_{epoch}.pth'
             if not os.path.exists('./save'):
                 os.makedirs('./save')
             torch.save({
