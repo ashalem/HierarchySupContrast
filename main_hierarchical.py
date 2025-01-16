@@ -178,7 +178,7 @@ def main():
 
     # Use Adam optimizer with a higher initial learning rate
     optimizer = torch.optim.Adam(model.parameters(),
-                               lr=1e-2,  # Higher initial learning rate
+                               lr=0.1,  # Higher initial learning rate
                                betas=(0.9, 0.999),
                                eps=1e-8,
                                weight_decay=1e-4)
