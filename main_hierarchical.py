@@ -12,8 +12,8 @@ from losses import HierarchySupConLoss
 
 def set_loader():
     # Data loading parameters
-    batch_size = 256
-    num_workers = 4
+    batch_size = 128
+    num_workers = 2
     data_folder = './datasets/'
 
     # CIFAR100 mean and std
