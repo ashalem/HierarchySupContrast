@@ -25,4 +25,10 @@ def check_gradients(model):
             if torch.isnan(param.grad).any():
                 print(f"WARNING: NaN detected in gradients of {name}")
             if torch.isinf(param.grad).any():
-                print(f"WARNING: Inf detected in gradients of {name}") 
+                print(f"WARNING: Inf detected in gradients of {name}")
+            # Optionally, print gradient norms
+            grad_norm = param.grad.norm().item()
+            if grad_norm == 0:
+                print(f"WARNING: Zero gradient norm detected for {name}")
+            elif grad_norm > 100:
+                print(f"WARNING: Extremely high gradient norm ({grad_norm}) detected for {name}") 

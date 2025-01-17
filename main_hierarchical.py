@@ -72,6 +72,18 @@ def set_model():
 
     return model, criterion
 
+def set_optimizer_and_scheduler(model):
+    # Set up optimizer with reduced learning rate
+    optimizer = torch.optim.SGD(model.parameters(),
+                                lr=0.1,  # Reduced from 0.25 to 0.1
+                                momentum=0.9,
+                                weight_decay=1e-4)
+    
+    # Define a learning rate scheduler
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
+    
+    return optimizer, scheduler
+
 def train(train_loader, model, criterion, optimizer, epoch):
     """One epoch training"""
     model.train()
@@ -170,7 +182,6 @@ class CIFAR100Hierarchy(datasets.CIFAR100):
         return img, (coarse_label, fine_label)
 
 def main():
-    # Add this line at the start of main
     torch.autograd.set_detect_anomaly(True)
     
     # Set up data loader
@@ -179,15 +190,8 @@ def main():
     # Set up model and criterion
     model, criterion = set_model()
 
-    # Set up optimizer
-    # momentum=0.9: Adds a fraction (0.9) of the previous gradient to current gradient
-    #               This helps accelerate training and overcome local minima
-    # weight_decay=1e-4: L2 regularization coefficient that prevents overfitting
-    #                    by penalizing large weights in the model
-    optimizer = torch.optim.SGD(model.parameters(),
-                               lr=0.25,
-                               momentum=0.9,
-                               weight_decay=1e-4)
+    # Set up optimizer and scheduler
+    optimizer, scheduler = set_optimizer_and_scheduler(model)
 
     # Training loop
     epochs = 100
@@ -199,8 +203,11 @@ def main():
         print('Epoch {}, total time {:.2f}, loss {:.3f}'.format(
             epoch, time2 - time1, loss))
 
+        # Step the scheduler
+        scheduler.step()
+
         # Save model
-        if epoch % 10 == 0:
+        if epoch % 50 == 0:
             save_file = f'./save/ckpt_epoch_{epoch}.pth'
             if not os.path.exists('./save'):
                 os.makedirs('./save')
@@ -209,6 +216,8 @@ def main():
                 'model': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
             }, save_file)
+
+    return
 
 if __name__ == '__main__':
     main() 
