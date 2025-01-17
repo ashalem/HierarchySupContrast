@@ -6,6 +6,7 @@ from __future__ import print_function
 
 import torch
 import torch.nn as nn
+from utils.debug_utils import check_tensor  # Import the utility function
 
 
 class SupConLoss(nn.Module):
@@ -154,34 +155,41 @@ class HierarchySupConLoss(nn.Module):
         Returns:
             Tensor: A scalar loss value.
         """
-        # print(f"\nHierarchySupConLoss forward:")
-        # print(f"Features shape: {features.shape}, device: {features.device}")
-        # print(f"Labels shape: {labels.shape}, device: {labels.device}")
-        # print(f"Level weights device: {self.level_weights.device}")
-        # print(f"SupConLoss temperature device: {self.supcon_loss.temperature}")
-        
+        # Debugging: Check for NaNs and Infs in features and labels
+        check_tensor(features, "Features in HierarchySupConLoss.forward")
+        check_tensor(labels, "Labels in HierarchySupConLoss.forward")
+
         batch_size = features.shape[0]
         num_levels = features.shape[1]
         num_views = features.shape[2]
-        
-        # print(f"Batch size: {batch_size}, Num levels: {num_levels}, Num views: {num_views}")
         
         # Calculate loss for each level
         level_losses = []
         for levelIdx in range(num_levels):
             level_features = features[:, levelIdx, :, :]
             level_labels = labels[:, levelIdx]
-            # print(f"\nLevel {levelIdx}:")
-            # print(f"Level features shape: {level_features.shape}, device: {level_features.device}")
-            # print(f"Level labels shape: {level_labels.shape}, device: {level_labels.device}")
+            
+            # Debugging: Check tensors before loss computation
+            check_tensor(level_features, f"Level {levelIdx} Features before SupConLoss")
+            check_tensor(level_labels, f"Level {levelIdx} Labels before SupConLoss")
             
             loss = self.supcon_loss(level_features, level_labels)
-            # print(f"Level {levelIdx} loss: {loss.item():.4f}, device: {loss.device}")
-            level_losses.append(loss)
             
+            # Debugging: Check loss value
+            if torch.isnan(loss) or torch.isinf(loss):
+                print(f"WARNING: Loss at level {levelIdx} is NaN or Inf")
+
+            level_losses.append(loss)
+        
         level_losses = torch.stack(level_losses)
-        # print(f"Stacked losses device: {level_losses.device}")
+        check_tensor(level_losses, "Stacked Level Losses in HierarchySupConLoss.forward")
+        # Compute weighted sum of losses across levels using predefined level weights
+        # level_losses shape: [num_levels]
+        # self.level_weights shape: [num_levels] 
+        # Element-wise multiply losses with weights and sum to get final scalar loss
         weighted_loss = torch.sum(level_losses * self.level_weights)
-        # print(f"Final weighted loss: {weighted_loss.item():.4f}, device: {weighted_loss.device}")
+        
+        # Debugging: Check final weighted loss
+        check_tensor(weighted_loss, "Weighted Loss in HierarchySupConLoss.forward")
         
         return weighted_loss    

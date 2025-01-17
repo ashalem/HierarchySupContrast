@@ -176,77 +176,68 @@ class PoolAdapter(nn.Module):
 
 class HierarchicalResNet(ResNet):
     def __init__(self, block_class, num_blocks, is_output_layer=[False, False, False, True], 
-                 in_channel=3, zero_init_residual=False, scale_up=False):
+                 in_channel=3, zero_init_residual=False, feat_dim=128):
         super(HierarchicalResNet, self).__init__(block_class, num_blocks, in_channel, zero_init_residual)
         self.is_output_layer = is_output_layer
         self.num_output_layers = sum(is_output_layer)
-        self.scale_up = scale_up
         
         # Add dimension matching
-        expansion = block_class.expansion
-        self.dims = [64 * expansion, 128 * expansion, 256 * expansion, 512 * expansion]
+        self.dims = [64 , 128, 256, 512]
         
         # Set target dimension based on scaling direction
-        if scale_up:
-            self.target_dim = max(self.dims)  # Scale up to 512
-        else:
-            self.target_dim = self.dims[0]    # Scale down to 64
+        self.target_dim = feat_dim
         
-        # Create adapters for each output layer
-        self.adapters = nn.ModuleList()
+        # Create heads for each output layer
+        self.heads = []
         for i, is_output in enumerate(is_output_layer):
             if not is_output:
                 continue
-            if scale_up:
-                if self.dims[i] < self.target_dim:
-                    self.adapters.append(nn.Linear(self.dims[i], self.target_dim))
-                else:
-                    self.adapters.append(nn.Identity())
-            else:  # scale down
-                if self.dims[i] > self.target_dim:
-                    self.adapters.append(nn.Linear(self.dims[i], self.target_dim))
-                else:
-                    self.adapters.append(nn.Identity())
+            self.heads.append(nn.Sequential(
+                nn.Linear(self.dims[i], self.dims[i]),
+                nn.ReLU(inplace=True),
+                nn.Linear(self.dims[i], self.target_dim)
+            ))
+            
     
     def forward(self, x, layer=100):
         if self.num_output_layers == 0:
             return None
 
         stacked_out_tensor = []
-        adapter_idx = 0
+        head_idx = 0
         
         out = F.relu(self.bn1(self.conv1(x)))
         out = self.layer1(out)
         if self.is_output_layer[0]:
             prepared_out = self.avgpool(out)
             prepared_out = torch.flatten(prepared_out, 1)
-            prepared_out = self.adapters[adapter_idx](prepared_out)
+            prepared_out = self.heads[head_idx](prepared_out)
             stacked_out_tensor.append(prepared_out)
-            adapter_idx += 1
+            head_idx += 1
             
         out = self.layer2(out)
         if self.is_output_layer[1]:
             prepared_out = self.avgpool(out)
             prepared_out = torch.flatten(prepared_out, 1)
-            prepared_out = self.adapters[adapter_idx](prepared_out)
+            prepared_out = self.heads[head_idx](prepared_out)
             stacked_out_tensor.append(prepared_out)
-            adapter_idx += 1
+            head_idx += 1
             
         out = self.layer3(out)
         if self.is_output_layer[2]:
             prepared_out = self.avgpool(out)
             prepared_out = torch.flatten(prepared_out, 1)
-            prepared_out = self.adapters[adapter_idx](prepared_out)
+            prepared_out = self.heads[head_idx](prepared_out)
             stacked_out_tensor.append(prepared_out)
-            adapter_idx += 1
+            head_idx += 1
             
         out = self.layer4(out)
         if self.is_output_layer[3]:
             prepared_out = self.avgpool(out)
             prepared_out = torch.flatten(prepared_out, 1)
-            prepared_out = self.adapters[adapter_idx](prepared_out)
+            prepared_out = self.heads[head_idx](prepared_out)
             stacked_out_tensor.append(prepared_out)
-            adapter_idx += 1
+            head_idx += 1
 
         stacked = torch.stack(stacked_out_tensor, dim=1)
         return stacked
@@ -324,15 +315,12 @@ class HierarchicalSupConResNet(SupConResNet):
         self.encoder = HierarchicalResNet(
             BasicBlock, [2, 2, 2, 2],
             is_output_layer=is_output_layer,
-            scale_up=scale_up
+            scale_up=scale_up,
+            feat_dim=feat_dim
         )
 
     def forward(self, x):
-        #print(f"\nHierarchicalSupConResNet forward:")
-        #print(f"Input shape: {x.shape}, device: {x.device}")
-        
         stacked_out_tensor = self.encoder(x)
-        #print(f"After encoder shape: {stacked_out_tensor.shape}, device: {stacked_out_tensor.device}")
         
         if self.num_output_layers != stacked_out_tensor.shape[1]:
             raise ValueError(
@@ -340,20 +328,13 @@ class HierarchicalSupConResNet(SupConResNet):
                 f"the number of output layers in the encoder ({stacked_out_tensor.shape[1]})"
             )
         
-        
-        # For each of the output layers, apply the projection head
         stacked_normalized = []
         for i in range(self.num_output_layers):
-            before_head = stacked_out_tensor[:, i, :]
-            #print(f"Layer {i} before head: {before_head.shape}, device: {before_head.device}")
-            after_head = self.head(before_head)
-            #print(f"Layer {i} after head: {after_head.shape}, device: {after_head.device}")
+            after_head = stacked_out_tensor[:, i, :]
             normalized_tensor = F.normalize(after_head, dim=1)
-            # Stack the normalized tensors for each layer
             stacked_normalized.append(normalized_tensor)
             
         normalized_tensor_stacked = torch.stack(stacked_normalized, dim=1)
-        #print(f"Final output shape: {normalized_tensor.shape}, device: {normalized_tensor.device}")
         return normalized_tensor_stacked
 
 
