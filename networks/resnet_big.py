@@ -199,21 +199,18 @@ class HierarchicalResNet(ResNet):
                 continue
             if scale_up:
                 if self.dims[i] < self.target_dim:
-                    self.adapters.append(nn.Upsample(size=self.target_dim, mode='linear'))
+                    self.adapters.append(nn.Linear(self.dims[i], self.target_dim))
                 else:
                     self.adapters.append(nn.Identity())
             else:  # scale down
                 if self.dims[i] > self.target_dim:
-                    self.adapters.append(nn.AdaptiveAvgPool1d(self.target_dim))
+                    self.adapters.append(nn.Linear(self.dims[i], self.target_dim))
                 else:
                     self.adapters.append(nn.Identity())
     
     def forward(self, x, layer=100):
         if self.num_output_layers == 0:
             return None
-
-        #print(f"\nHierarchicalResNet forward:")
-        #print(f"Input shape: {x.shape}")
 
         stacked_out_tensor = []
         adapter_idx = 0
@@ -222,53 +219,36 @@ class HierarchicalResNet(ResNet):
         out = self.layer1(out)
         if self.is_output_layer[0]:
             prepared_out = self.avgpool(out)
-            #print(f"Layer1 after avgpool: {prepared_out.shape}")
             prepared_out = torch.flatten(prepared_out, 1)
-            #print(f"Layer1 after flatten: {prepared_out.shape}")
-            prepared_out = self.adapters[adapter_idx](prepared_out.unsqueeze(1))
-            prepared_out = prepared_out.squeeze(1)
-            #print(f"Layer1 after adapter: {prepared_out.shape}")
+            prepared_out = self.adapters[adapter_idx](prepared_out)
             stacked_out_tensor.append(prepared_out)
             adapter_idx += 1
             
         out = self.layer2(out)
         if self.is_output_layer[1]:
             prepared_out = self.avgpool(out)
-            #print(f"Layer2 after avgpool: {prepared_out.shape}")
             prepared_out = torch.flatten(prepared_out, 1)
-            #print(f"Layer2 after flatten: {prepared_out.shape}")
-            prepared_out = self.adapters[adapter_idx](prepared_out.unsqueeze(1))
-            prepared_out = prepared_out.squeeze(1)
-            #print(f"Layer2 after adapter: {prepared_out.shape}")
+            prepared_out = self.adapters[adapter_idx](prepared_out)
             stacked_out_tensor.append(prepared_out)
             adapter_idx += 1
             
         out = self.layer3(out)
         if self.is_output_layer[2]:
             prepared_out = self.avgpool(out)
-            #print(f"Layer3 after avgpool: {prepared_out.shape}")
             prepared_out = torch.flatten(prepared_out, 1)
-            #print(f"Layer3 after flatten: {prepared_out.shape}")
-            prepared_out = self.adapters[adapter_idx](prepared_out.unsqueeze(1))
-            prepared_out = prepared_out.squeeze(1)
-            #print(f"Layer3 after adapter: {prepared_out.shape}")
+            prepared_out = self.adapters[adapter_idx](prepared_out)
             stacked_out_tensor.append(prepared_out)
             adapter_idx += 1
             
         out = self.layer4(out)
         if self.is_output_layer[3]:
             prepared_out = self.avgpool(out)
-            #print(f"Layer4 after avgpool: {prepared_out.shape}")
             prepared_out = torch.flatten(prepared_out, 1)
-            #print(f"Layer4 after flatten: {prepared_out.shape}")
-            prepared_out = self.adapters[adapter_idx](prepared_out.unsqueeze(1))
-            prepared_out = prepared_out.squeeze(1)
-            #print(f"Layer4 after adapter: {prepared_out.shape}")
+            prepared_out = self.adapters[adapter_idx](prepared_out)
             stacked_out_tensor.append(prepared_out)
             adapter_idx += 1
 
         stacked = torch.stack(stacked_out_tensor, dim=1)
-        #print(f"Final stacked tensor shape: {stacked.shape}")
         return stacked
 
 def resnet18(**kwargs):
