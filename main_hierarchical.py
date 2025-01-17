@@ -51,9 +51,9 @@ def set_model():
     model = HierarchicalSupConResNet(
         name='resnet18',
         head='mlp',
-        feat_dim=64,
+        feat_dim=128,
         is_output_layer=[False, True, False, True],
-        scale_up=False  # Default to scaling down to 64 dimensions
+        scale_up=True  # Default to scaling up to 64 dimensions
     )
     
     # Define loss with weights for each level

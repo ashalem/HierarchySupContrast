@@ -290,7 +290,7 @@ def resnet101(**kwargs):
 # A dictionary that maps the model name to the model class and the number of output channels.
 # Those output channels are used for the projection head as the input dimension.
 model_dict = {
-    'resnet18': [resnet18, 64],
+    'resnet18': [resnet18, 512],
     'resnet34': [resnet34, 512],
     'resnet50': [resnet50, 2048],
     'resnet101': [resnet101, 2048],
