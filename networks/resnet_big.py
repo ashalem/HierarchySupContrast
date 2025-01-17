@@ -309,13 +309,12 @@ class SupConResNet(nn.Module):
 
 class HierarchicalSupConResNet(SupConResNet):
     def __init__(self, name='resnet18', head='mlp', feat_dim=128, 
-                 is_output_layer=[False, False, False, True], scale_up=False):
+                 is_output_layer=[False, False, False, True]):
         super(HierarchicalSupConResNet, self).__init__(name, head, feat_dim)
         self.num_output_layers = sum(is_output_layer)
         self.encoder = HierarchicalResNet(
             BasicBlock, [2, 2, 2, 2],
             is_output_layer=is_output_layer,
-            scale_up=scale_up,
             feat_dim=feat_dim
         )
 

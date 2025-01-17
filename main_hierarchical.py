@@ -54,7 +54,6 @@ def set_model():
         head='mlp',
         feat_dim=128,
         is_output_layer=[False, True, False, True],
-        scale_up=True  # Default to scaling up to 64 dimensions
     )
     
     # Define loss with weights for each level
