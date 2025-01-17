@@ -9,11 +9,12 @@ from torchvision import transforms, datasets
 from util import TwoCropTransform, AverageMeter
 from networks.resnet_big import HierarchicalSupConResNet
 from losses import HierarchySupConLoss
+from utils.debug_utils import check_tensor, check_gradients
 
 def set_loader():
     # Data loading parameters
-    batch_size = 512
-    num_workers = 2
+    batch_size = 256  # Reduced batch size for L4 GPU memory constraints
+    num_workers = 8   # Increased workers for better data loading parallelization
     data_folder = './datasets/'
 
     # CIFAR100 mean and std
@@ -85,44 +86,47 @@ def train(train_loader, model, criterion, optimizer, epoch):
     for idx, (images, labels) in enumerate(train_loader):
         data_time.update(time.time() - end)
         
-        # Print initial devices
-        # print(f"\nInitial devices:")
-        # print(f"Images device: {images[0].device}")
-        # print(f"Labels devices: {labels[0].device}, {labels[1].device}")
-
         # Unpack hierarchical labels
         superclass_labels, class_labels = labels
         labels = torch.stack([superclass_labels, class_labels], dim=1)
-        # print(f"Stacked labels device: {labels.device}")
 
         images = torch.cat([images[0], images[1]], dim=0)
-        # print(f"Concatenated images device: {images.device}")
         
         if torch.cuda.is_available():
             images = images.cuda(non_blocking=True)
             labels = labels.cuda(non_blocking=True)
-            # print(f"\nAfter CUDA transfer:")
-            # print(f"Images device: {images.device}")
-            # print(f"Labels device: {labels.device}")
         
         bsz = labels.shape[0]
 
         # Forward pass
         features = model(images)
-        # print(f"Features after model device: {features.device}")
         
+        # Debugging: Check features for NaN/Inf
+        check_tensor(features, "Features after model(images) in train")
+
         f1, f2 = torch.split(features, [bsz, bsz], dim=0)
         features = torch.cat([f1.unsqueeze(2), f2.unsqueeze(2)], dim=2)
-        # print(f"Features after processing device: {features.device}")
+        
+        # Debugging: Check features after processing
+        check_tensor(features, "Features after processing (f1, f2) concatenation")
         
         # Compute loss
         loss = criterion(features, labels)
-        # print(f"Loss device: {loss.device}")
+        
+        # Debugging: Check loss
+        check_tensor(loss, f"Loss at epoch {epoch}, iteration {idx + 1}")
+        if torch.isnan(loss) or torch.isinf(loss):
+            print(f"WARNING: Loss is NaN or Inf at epoch {epoch}, iteration {idx + 1}")
+        
         losses.update(loss.item(), bsz)
 
         # SGD
         optimizer.zero_grad()
         loss.backward()
+        
+        # Debugging: Check gradients after backward
+        check_gradients(model)
+
         optimizer.step()
 
         # Measure elapsed time
@@ -196,8 +200,8 @@ def main():
             epoch, time2 - time1, loss))
 
         # Save model
-        if epoch % 50 == 0:
-            save_file = './save/ckpt_epoch_{epoch}.pth'
+        if epoch % 10 == 0:
+            save_file = f'./save/ckpt_epoch_{epoch}.pth'
             if not os.path.exists('./save'):
                 os.makedirs('./save')
             torch.save({
