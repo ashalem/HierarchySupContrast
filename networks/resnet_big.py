@@ -360,19 +360,21 @@ class HierarchicalSupConResNet(SupConResNet):
                 f"the number of output layers in the encoder ({stacked_out_tensor.shape[1]})"
             )
         
-        normalized_tensor = torch.zeros_like(stacked_out_tensor)
-        #print(f"Normalized tensor device: {normalized_tensor.device}")
         
         # For each of the output layers, apply the projection head
+        stacked_normalized = []
         for i in range(self.num_output_layers):
             before_head = stacked_out_tensor[:, i, :]
             #print(f"Layer {i} before head: {before_head.shape}, device: {before_head.device}")
             after_head = self.head(before_head)
             #print(f"Layer {i} after head: {after_head.shape}, device: {after_head.device}")
-            normalized_tensor[:, i, :] = F.normalize(after_head, dim=1)
+            normalized_tensor = F.normalize(after_head, dim=1)
+            # Stack the normalized tensors for each layer
+            stacked_normalized.append(normalized_tensor)
             
+        normalized_tensor_stacked = torch.stack(stacked_normalized, dim=1)
         #print(f"Final output shape: {normalized_tensor.shape}, device: {normalized_tensor.device}")
-        return normalized_tensor
+        return normalized_tensor_stacked
 
 
 class SupCEResNet(nn.Module):
