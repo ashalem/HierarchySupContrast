@@ -187,17 +187,18 @@ class HierarchicalResNet(ResNet):
         # Set target dimension based on scaling direction
         self.target_dim = feat_dim
         
-        # Create heads for each output layer
-        self.heads = []
+        # Create heads for each output layer as ModuleList
+        heads = []
         for i, is_output in enumerate(is_output_layer):
             if not is_output:
                 continue
-            self.heads.append(nn.Sequential(
+            heads.append(nn.Sequential(
                 nn.Linear(self.dims[i], self.dims[i]),
                 nn.ReLU(inplace=True),
                 nn.Linear(self.dims[i], self.target_dim)
             ))
-            
+        self.heads = nn.ModuleList(heads)
+        
     
     def forward(self, x, layer=100):
         if self.num_output_layers == 0:
