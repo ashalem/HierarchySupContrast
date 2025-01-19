@@ -84,76 +84,69 @@ def set_optimizer_and_scheduler(model):
     return optimizer, scheduler
 
 def train(train_loader, model, criterion, optimizer, epoch):
-    """One epoch training"""
+    """Train for one epoch"""
     model.train()
-    print(f"\nModel device: {next(model.parameters()).device}")
-    print(f"Criterion device: {criterion.level_weights.device}")
-
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
-    losses = AverageMeter()
-
-    end = time.time()
+    
     for idx, (images, labels) in enumerate(train_loader):
-        data_time.update(time.time() - end)
-        
         # Unpack hierarchical labels
         superclass_labels, class_labels = labels
-        labels = torch.stack([superclass_labels, class_labels], dim=1)
-
-        images = torch.cat([images[0], images[1]], dim=0)
         
-        if torch.cuda.is_available():
-            images = images.cuda(non_blocking=True)
-            labels = labels.cuda(non_blocking=True)
+        # Handle the two augmented views
+        images = torch.cat([images[0], images[1]], dim=0)  # [2*B, C, H, W]
+        # Duplicate labels for both views
+        superclass_labels = superclass_labels.repeat(2)  # [2*B]
+        class_labels = class_labels.repeat(2)  # [2*B]
         
-        bsz = labels.shape[0]
-
+        # Stack labels for hierarchical loss
+        labels = torch.stack([superclass_labels, class_labels], dim=1)  # [2*B, 2]
+        
+        # Move to GPU
+        images = images.cuda(non_blocking=True)
+        labels = labels.cuda(non_blocking=True)
+        
+        # Debug: Check data location and shapes
+        check_tensor(images, "Input images")
+        check_tensor(labels, "Input labels")
+        
         # Forward pass
-        features = model(images)
+        features = model(images)  # [2*B, num_levels, feat_dim]
         
-        # Debugging: Check features for NaN/Inf
-        check_tensor(features, "Features after model(images) in train")
-
+        # Debug: Check features
+        check_tensor(features, "Model output features")
+        
+        # Split features for contrastive loss
+        bsz = labels.shape[0] // 2
         f1, f2 = torch.split(features, [bsz, bsz], dim=0)
-        features = torch.cat([f1.unsqueeze(2), f2.unsqueeze(2)], dim=2)
+        # Reshape for contrastive loss: [B, num_levels, num_views=2, feat_dim]
+        features = torch.stack([f1, f2], dim=2)
         
-        # Debugging: Check features after processing
-        check_tensor(features, "Features after processing (f1, f2) concatenation")
+        # Debug: Check reshaped features
+        check_tensor(features, "Reshaped features for contrastive loss")
+        
+        # Get labels for first half (since we duplicated them)
+        labels = labels[:bsz]
         
         # Compute loss
         loss = criterion(features, labels)
         
-        # Debugging: Check loss
-        check_tensor(loss, f"Loss at epoch {epoch}, iteration {idx + 1}")
-        if torch.isnan(loss) or torch.isinf(loss):
-            print(f"WARNING: Loss is NaN or Inf at epoch {epoch}, iteration {idx + 1}")
+        # Debug: Check loss and gradients
+        check_tensor(loss, "Loss value")
         
-        losses.update(loss.item(), bsz)
-
-        # SGD
+        # Backward and optimize
         optimizer.zero_grad()
         loss.backward()
         
-        # Debugging: Check gradients after backward
-        check_gradients(model)
-
+        # Check gradients before step
+        if idx % 20 == 0:  # Reduced frequency to avoid spam
+            check_gradients(model, "Main model")
+        
         optimizer.step()
-
-        # Measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
-
-        # Print info
-        if (idx + 1) % 10 == 0:
-            print('Train: [{0}][{1}/{2}]\t'
-                  'BT {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                  'DT {data_time.val:.3f} ({data_time.avg:.3f})\t'
-                  'loss {loss.val:.3f} ({loss.avg:.3f})'.format(
-                   epoch, idx + 1, len(train_loader), batch_time=batch_time,
-                   data_time=data_time, loss=losses))
-
-    return losses.avg
+        
+        # Print progress
+        if idx % 20 == 0:
+            print(f'Train Epoch: [{epoch}][{idx}/{len(train_loader)}]\tLoss: {loss.item():.6f}')
+    
+    return loss.item()
 
 class CIFAR100Hierarchy(datasets.CIFAR100):
     """CIFAR100 dataset with hierarchical labels"""
@@ -181,27 +174,31 @@ class CIFAR100Hierarchy(datasets.CIFAR100):
         return img, (coarse_label, fine_label)
 
 def main():
+    # Enable anomaly detection for better error messages
     torch.autograd.set_detect_anomaly(True)
     
-    # Set up data loader
+    # Get data loader
     train_loader = set_loader()
-
-    # Set up model and criterion
+    
+    # Build model and criterion
     model, criterion = set_model()
-
-    # Set up optimizer and scheduler
+    
+    # Debug: Check initial model and criterion device
+    print(f"Model device: {next(model.parameters()).device}")
+    print(f"Criterion device: {next(criterion.parameters()).device}")
+    
+    # Build optimizer and scheduler
     optimizer, scheduler = set_optimizer_and_scheduler(model)
-
+    
     # Training loop
-    epochs = 100
-    for epoch in range(1, epochs + 1):
+    for epoch in range(1, 201):  # 200 epochs
         # Train for one epoch
         time1 = time.time()
         loss = train(train_loader, model, criterion, optimizer, epoch)
         time2 = time.time()
         print('Epoch {}, total time {:.2f}, loss {:.3f}'.format(
             epoch, time2 - time1, loss))
-
+            
         # Step the scheduler
         scheduler.step()
 
