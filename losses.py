@@ -6,6 +6,7 @@ from __future__ import print_function
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from utils.debug_utils import check_tensor  # Import the utility function
 
 
@@ -128,12 +129,12 @@ class HierarchySupConLoss(nn.Module):
             raise TypeError(f'Expected level_weights to be a list or tuple, but got {type(level_weights)}')
         self.num_levels = len(level_weights)
         
-        # Convert to tensor and register as a buffer so it moves with the module
+        # Convert to tensor and register as a parameter to ensure gradient flow
         weights = torch.tensor(level_weights, dtype=torch.float32)
         if weights.sum() == 0:
             raise ValueError('Sum of level_weights must be greater than 0.')
-        normalized_weights = weights / weights.sum()  # Normalize weights
-        self.register_buffer('level_weights', normalized_weights)  # This will move with the module to GPU
+        normalized_weights = nn.Parameter(weights / weights.sum())  # Register as parameter
+        self.register_parameter('level_weights', normalized_weights)
 
         self.temperature = temperature
         self.contrast_mode = contrast_mode
@@ -163,11 +164,15 @@ class HierarchySupConLoss(nn.Module):
         num_levels = features.shape[1]
         num_views = features.shape[2]
         
+        if num_levels != self.num_levels:
+            raise ValueError(f'Number of levels in features ({num_levels}) does not match '
+                          f'number of level weights ({self.num_levels})')
+        
         # Calculate loss for each level
         level_losses = []
         for levelIdx in range(num_levels):
-            level_features = features[:, levelIdx, :, :]
-            level_labels = labels[:, levelIdx]
+            level_features = features[:, levelIdx, :, :]  # [B, 2, feat_dim]
+            level_labels = labels[:, levelIdx]  # [B]
             
             # Debugging: Check tensors before loss computation
             check_tensor(level_features, f"Level {levelIdx} Features before SupConLoss")
@@ -178,18 +183,21 @@ class HierarchySupConLoss(nn.Module):
             # Debugging: Check loss value
             if torch.isnan(loss) or torch.isinf(loss):
                 print(f"WARNING: Loss at level {levelIdx} is NaN or Inf")
+                print(f"Level features stats: mean={level_features.mean():.4f}, std={level_features.std():.4f}")
+                print(f"Unique labels: {torch.unique(level_labels)}")
 
             level_losses.append(loss)
         
-        level_losses = torch.stack(level_losses)
-        check_tensor(level_losses, "Stacked Level Losses in HierarchySupConLoss.forward")
-        # Compute weighted sum of losses across levels using predefined level weights
-        # level_losses shape: [num_levels]
-        # self.level_weights shape: [num_levels] 
-        # Element-wise multiply losses with weights and sum to get final scalar loss
-        weighted_loss = torch.sum(level_losses * self.level_weights)
+        level_losses = torch.stack(level_losses)  # [num_levels]
+        check_tensor(level_losses, "Stacked Level Losses")
+        
+        # Apply softmax to level weights to ensure they sum to 1 and are positive
+        level_weights = F.softmax(self.level_weights, dim=0)
+        
+        # Compute weighted sum of losses
+        weighted_loss = torch.sum(level_losses * level_weights)
         
         # Debugging: Check final weighted loss
-        check_tensor(weighted_loss, "Weighted Loss in HierarchySupConLoss.forward")
+        check_tensor(weighted_loss, "Weighted Loss")
         
         return weighted_loss    

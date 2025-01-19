@@ -182,12 +182,10 @@ class HierarchicalResNet(ResNet):
         self.num_output_layers = sum(is_output_layer)
         
         # Add dimension matching
-        self.dims = [64 , 128, 256, 512]
-        
-        # Set target dimension based on scaling direction
+        self.dims = [64, 128, 256, 512]  # Output dimensions of each layer
         self.target_dim = feat_dim
         
-        # Create heads for each output layer as ModuleList
+        # Create heads for each output layer (similar to SupConResNet)
         heads = []
         for i, is_output in enumerate(is_output_layer):
             if not is_output:
@@ -197,22 +195,32 @@ class HierarchicalResNet(ResNet):
                 nn.ReLU(inplace=True),
                 nn.Linear(self.dims[i], self.target_dim)
             ))
-        self.heads = nn.ModuleList(heads)
-        
+        self.heads = nn.ModuleList(heads)  # Proper registration as submodules
     
-    def forward(self, x, layer=100):
+    def forward(self, x):
+        from utils.debug_utils import check_tensor
+        
         if self.num_output_layers == 0:
             return None
 
         stacked_out_tensor = []
         head_idx = 0
         
+        # Debug input
+        check_tensor(x, "HierarchicalResNet input", print_stats=True)
+        
+        # Track intermediate features and gradients
         out = F.relu(self.bn1(self.conv1(x)))
-        out = self.layer1(out)
+        out = self.layer1(out)  
         if self.is_output_layer[0]:
             prepared_out = self.avgpool(out)
             prepared_out = torch.flatten(prepared_out, 1)
+            check_tensor(prepared_out, "Layer 1 before head", print_stats=True)
             prepared_out = self.heads[head_idx](prepared_out)
+            # Register hook to track gradients
+            if prepared_out.requires_grad:
+                prepared_out.register_hook(lambda grad: print(f"Head {head_idx} gradient stats: mean={grad.mean().item():.4e}, std={grad.std().item():.4e}"))
+            check_tensor(prepared_out, "Layer 1 after head", print_stats=True)
             stacked_out_tensor.append(prepared_out)
             head_idx += 1
             
@@ -220,7 +228,11 @@ class HierarchicalResNet(ResNet):
         if self.is_output_layer[1]:
             prepared_out = self.avgpool(out)
             prepared_out = torch.flatten(prepared_out, 1)
+            check_tensor(prepared_out, "Layer 2 before head", print_stats=True)
             prepared_out = self.heads[head_idx](prepared_out)
+            if prepared_out.requires_grad:
+                prepared_out.register_hook(lambda grad: print(f"Head {head_idx} gradient stats: mean={grad.mean().item():.4e}, std={grad.std().item():.4e}"))
+            check_tensor(prepared_out, "Layer 2 after head", print_stats=True)
             stacked_out_tensor.append(prepared_out)
             head_idx += 1
             
@@ -228,7 +240,11 @@ class HierarchicalResNet(ResNet):
         if self.is_output_layer[2]:
             prepared_out = self.avgpool(out)
             prepared_out = torch.flatten(prepared_out, 1)
+            check_tensor(prepared_out, "Layer 3 before head", print_stats=True)
             prepared_out = self.heads[head_idx](prepared_out)
+            if prepared_out.requires_grad:
+                prepared_out.register_hook(lambda grad: print(f"Head {head_idx} gradient stats: mean={grad.mean().item():.4e}, std={grad.std().item():.4e}"))
+            check_tensor(prepared_out, "Layer 3 after head", print_stats=True)
             stacked_out_tensor.append(prepared_out)
             head_idx += 1
             
@@ -236,12 +252,19 @@ class HierarchicalResNet(ResNet):
         if self.is_output_layer[3]:
             prepared_out = self.avgpool(out)
             prepared_out = torch.flatten(prepared_out, 1)
+            check_tensor(prepared_out, "Layer 4 before head", print_stats=True)
             prepared_out = self.heads[head_idx](prepared_out)
+            if prepared_out.requires_grad:
+                prepared_out.register_hook(lambda grad: print(f"Head {head_idx} gradient stats: mean={grad.mean().item():.4e}, std={grad.std().item():.4e}"))
+            check_tensor(prepared_out, "Layer 4 after head", print_stats=True)
             stacked_out_tensor.append(prepared_out)
             head_idx += 1
 
         stacked = torch.stack(stacked_out_tensor, dim=1)
+        check_tensor(stacked, "Final stacked output", print_stats=True)
         return stacked
+
+
 
 def resnet18(**kwargs):
     return ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
@@ -313,13 +336,20 @@ class HierarchicalSupConResNet(SupConResNet):
                  is_output_layer=[False, False, False, True]):
         super(HierarchicalSupConResNet, self).__init__(name, head, feat_dim)
         self.num_output_layers = sum(is_output_layer)
+        
+        # Replace the encoder with our hierarchical version
         self.encoder = HierarchicalResNet(
             BasicBlock, [2, 2, 2, 2],
             is_output_layer=is_output_layer,
             feat_dim=feat_dim
         )
-
+        
     def forward(self, x):
+        from utils.debug_utils import check_tensor
+        
+        # Debug input
+        check_tensor(x, "HierarchicalSupConResNet input", print_stats=True)
+        
         stacked_out_tensor = self.encoder(x)
         
         if self.num_output_layers != stacked_out_tensor.shape[1]:
@@ -328,13 +358,22 @@ class HierarchicalSupConResNet(SupConResNet):
                 f"the number of output layers in the encoder ({stacked_out_tensor.shape[1]})"
             )
         
+        # Debug encoder output
+        check_tensor(stacked_out_tensor, "Encoder output", print_stats=True)
+        
         stacked_normalized = []
         for i in range(self.num_output_layers):
             after_head = stacked_out_tensor[:, i, :]
+            check_tensor(after_head, f"Features before normalization level {i}", print_stats=True)
+            
             normalized_tensor = F.normalize(after_head, dim=1)
+            check_tensor(normalized_tensor, f"Features after normalization level {i}", print_stats=True)
+            
             stacked_normalized.append(normalized_tensor)
             
         normalized_tensor_stacked = torch.stack(stacked_normalized, dim=1)
+        check_tensor(normalized_tensor_stacked, "Final normalized output", print_stats=True)
+        
         return normalized_tensor_stacked
 
 

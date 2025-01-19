@@ -58,7 +58,7 @@ def set_model():
     
     # Define loss with weights for each level
     criterion = HierarchySupConLoss(
-        level_weights=[0.4, 0.6],  # More Weight for the second level
+        level_weights=[0.2, 0.8],  # More Weight for the second level
         temperature=0.1 # same as in the paper
     )
 
@@ -184,8 +184,8 @@ def main():
     model, criterion = set_model()
     
     # Debug: Check initial model and criterion device
-    print(f"Model device: {model.device}")
-    print(f"Criterion device: {criterion.device}")
+    print(f"Model device: {next(model.parameters()).device}")
+    print(f"Criterion device: {next(criterion.parameters()).device}")
     
     # Build optimizer and scheduler
     optimizer, scheduler = set_optimizer_and_scheduler(model)
