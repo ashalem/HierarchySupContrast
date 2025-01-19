@@ -184,8 +184,8 @@ def main():
     model, criterion = set_model()
     
     # Debug: Check initial model and criterion device
-    print(f"Model device: {next(model.parameters()).device}")
-    print(f"Criterion device: {next(criterion.parameters()).device}")
+    print(f"Model device: {model.device}")
+    print(f"Criterion device: {criterion.device}")
     
     # Build optimizer and scheduler
     optimizer, scheduler = set_optimizer_and_scheduler(model)
