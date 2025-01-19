@@ -196,6 +196,26 @@ class HierarchicalResNet(ResNet):
                 nn.Linear(self.dims[i], self.target_dim)
             ))
         self.heads = nn.ModuleList(heads)  # Proper registration as submodules
+
+    def _track_layer_gradients(self, layer_name, tensor):
+        """Helper to track gradients through layers"""
+        if tensor.requires_grad:
+            tensor.register_hook(lambda grad: self._gradient_hook(layer_name, grad))
+
+    def _gradient_hook(self, name, grad):
+        """Hook for tracking gradient statistics"""
+        with torch.no_grad():
+            grad_norm = grad.norm().item()
+            
+            # Only print warnings for concerning gradients
+            if grad_norm < 1e-5:
+                print(f"\nWARNING: Possible vanishing gradient in {name}")
+                print(f"Grad norm: {grad_norm:.4e}")
+                print(f"Grad mean: {grad.mean().item():.4e}")
+            elif grad_norm > 1e2:
+                print(f"\nWARNING: Possible exploding gradient in {name}")
+                print(f"Grad norm: {grad_norm:.4e}")
+                print(f"Grad mean: {grad.mean().item():.4e}")
     
     def forward(self, x):
         from utils.debug_utils import check_tensor
@@ -206,21 +226,23 @@ class HierarchicalResNet(ResNet):
         stacked_out_tensor = []
         head_idx = 0
         
-        # Debug input
-        check_tensor(x, "HierarchicalResNet input", print_stats=True)
-        
         # Track intermediate features and gradients
         out = F.relu(self.bn1(self.conv1(x)))
-        out = self.layer1(out)  
+        out = self.layer1(out)  # Fixed: Include layer1 processing
         if self.is_output_layer[0]:
             prepared_out = self.avgpool(out)
             prepared_out = torch.flatten(prepared_out, 1)
-            check_tensor(prepared_out, "Layer 1 before head", print_stats=True)
-            prepared_out = self.heads[head_idx](prepared_out)
-            # Register hook to track gradients
-            if prepared_out.requires_grad:
-                prepared_out.register_hook(lambda grad: print(f"Head {head_idx} gradient stats: mean={grad.mean().item():.4e}, std={grad.std().item():.4e}"))
-            check_tensor(prepared_out, "Layer 1 after head", print_stats=True)
+            
+            # Track gradients through first head's layers
+            head = self.heads[head_idx]
+            intermediate = head[0](prepared_out)  # First linear layer
+            self._track_layer_gradients(f"Head {head_idx} - Linear 1", intermediate)
+            
+            intermediate = head[1](intermediate)  # ReLU
+            intermediate = head[2](intermediate)  # Second linear layer
+            self._track_layer_gradients(f"Head {head_idx} - Linear 2", intermediate)
+            
+            prepared_out = intermediate
             stacked_out_tensor.append(prepared_out)
             head_idx += 1
             
@@ -228,11 +250,17 @@ class HierarchicalResNet(ResNet):
         if self.is_output_layer[1]:
             prepared_out = self.avgpool(out)
             prepared_out = torch.flatten(prepared_out, 1)
-            check_tensor(prepared_out, "Layer 2 before head", print_stats=True)
-            prepared_out = self.heads[head_idx](prepared_out)
-            if prepared_out.requires_grad:
-                prepared_out.register_hook(lambda grad: print(f"Head {head_idx} gradient stats: mean={grad.mean().item():.4e}, std={grad.std().item():.4e}"))
-            check_tensor(prepared_out, "Layer 2 after head", print_stats=True)
+            
+            # Track gradients through second head's layers
+            head = self.heads[head_idx]
+            intermediate = head[0](prepared_out)  # First linear layer
+            self._track_layer_gradients(f"Head {head_idx} - Linear 1", intermediate)
+            
+            intermediate = head[1](intermediate)  # ReLU
+            intermediate = head[2](intermediate)  # Second linear layer
+            self._track_layer_gradients(f"Head {head_idx} - Linear 2", intermediate)
+            
+            prepared_out = intermediate
             stacked_out_tensor.append(prepared_out)
             head_idx += 1
             
@@ -240,11 +268,17 @@ class HierarchicalResNet(ResNet):
         if self.is_output_layer[2]:
             prepared_out = self.avgpool(out)
             prepared_out = torch.flatten(prepared_out, 1)
-            check_tensor(prepared_out, "Layer 3 before head", print_stats=True)
-            prepared_out = self.heads[head_idx](prepared_out)
-            if prepared_out.requires_grad:
-                prepared_out.register_hook(lambda grad: print(f"Head {head_idx} gradient stats: mean={grad.mean().item():.4e}, std={grad.std().item():.4e}"))
-            check_tensor(prepared_out, "Layer 3 after head", print_stats=True)
+            
+            # Track gradients through third head's layers
+            head = self.heads[head_idx]
+            intermediate = head[0](prepared_out)  # First linear layer
+            self._track_layer_gradients(f"Head {head_idx} - Linear 1", intermediate)
+            
+            intermediate = head[1](intermediate)  # ReLU
+            intermediate = head[2](intermediate)  # Second linear layer
+            self._track_layer_gradients(f"Head {head_idx} - Linear 2", intermediate)
+            
+            prepared_out = intermediate
             stacked_out_tensor.append(prepared_out)
             head_idx += 1
             
@@ -252,16 +286,21 @@ class HierarchicalResNet(ResNet):
         if self.is_output_layer[3]:
             prepared_out = self.avgpool(out)
             prepared_out = torch.flatten(prepared_out, 1)
-            check_tensor(prepared_out, "Layer 4 before head", print_stats=True)
-            prepared_out = self.heads[head_idx](prepared_out)
-            if prepared_out.requires_grad:
-                prepared_out.register_hook(lambda grad: print(f"Head {head_idx} gradient stats: mean={grad.mean().item():.4e}, std={grad.std().item():.4e}"))
-            check_tensor(prepared_out, "Layer 4 after head", print_stats=True)
+            
+            # Track gradients through fourth head's layers
+            head = self.heads[head_idx]
+            intermediate = head[0](prepared_out)  # First linear layer
+            self._track_layer_gradients(f"Head {head_idx} - Linear 1", intermediate)
+            
+            intermediate = head[1](intermediate)  # ReLU
+            intermediate = head[2](intermediate)  # Second linear layer
+            self._track_layer_gradients(f"Head {head_idx} - Linear 2", intermediate)
+            
+            prepared_out = intermediate
             stacked_out_tensor.append(prepared_out)
             head_idx += 1
 
         stacked = torch.stack(stacked_out_tensor, dim=1)
-        check_tensor(stacked, "Final stacked output", print_stats=True)
         return stacked
 
 
