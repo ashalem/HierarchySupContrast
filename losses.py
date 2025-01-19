@@ -146,16 +146,6 @@ class HierarchySupConLoss(nn.Module):
         )
 
     def forward(self, features, labels):
-        """
-        Compute the hierarchical supervised contrastive loss.
-
-        Args:
-            features (Tensor): Hidden vectors of shape [batch_size, num_levels, num_views, feature_dim].
-            labels (Tensor): Ground truth labels of shape [batch_size, num_levels]. Each label corresponds to a level.
-
-        Returns:
-            Tensor: A scalar loss value.
-        """
         # Debugging: Check for NaNs and Infs in features and labels
         check_tensor(features, "Features in HierarchySupConLoss.forward")
         check_tensor(labels, "Labels in HierarchySupConLoss.forward")
@@ -180,6 +170,10 @@ class HierarchySupConLoss(nn.Module):
             
             loss = self.supcon_loss(level_features, level_labels)
             
+            # Monitor individual level losses
+            print(f"\nLevel {levelIdx} Loss: {loss.item():.4f}")
+            print(f"Level {levelIdx} Unique Labels: {torch.unique(level_labels).cpu().numpy()}")
+            
             # Debugging: Check loss value
             if torch.isnan(loss) or torch.isinf(loss):
                 print(f"WARNING: Loss at level {levelIdx} is NaN or Inf")
@@ -187,17 +181,23 @@ class HierarchySupConLoss(nn.Module):
                 print(f"Unique labels: {torch.unique(level_labels)}")
 
             level_losses.append(loss)
-        
+
         level_losses = torch.stack(level_losses)  # [num_levels]
         check_tensor(level_losses, "Stacked Level Losses")
         
         # Apply softmax to level weights to ensure they sum to 1 and are positive
         level_weights = F.softmax(self.level_weights, dim=0)
         
+        # Print current level weights
+        print(f"\nCurrent level weights: {level_weights.detach().cpu().numpy()}")
+        
         # Compute weighted sum of losses
         weighted_loss = torch.sum(level_losses * level_weights)
         
-        # Debugging: Check final weighted loss
-        check_tensor(weighted_loss, "Weighted Loss")
+        # Print individual contributions
+        print(f"Individual level contributions:")
+        for i in range(num_levels):
+            contribution = (level_losses[i] * level_weights[i]).item()
+            print(f"Level {i}: {contribution:.4f} ({(contribution/weighted_loss.item())*100:.1f}% of total)")
         
         return weighted_loss    

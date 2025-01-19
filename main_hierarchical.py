@@ -5,6 +5,7 @@ import time
 import torch
 import torch.backends.cudnn as cudnn
 from torchvision import transforms, datasets
+import math
 
 from util import TwoCropTransform, AverageMeter
 from networks.resnet_big import HierarchicalSupConResNet
@@ -59,7 +60,9 @@ def set_model():
     # Define loss with weights for each level
     criterion = HierarchySupConLoss(
         level_weights=[0.2, 0.8],  # More Weight for the second level
-        temperature=0.1 # same as in the paper
+        temperature=0.05,  # Reduced from 0.1 to make loss more sensitive
+        contrast_mode='all',
+        base_temperature=0.05  # Match base temperature with temperature
     )
 
     if torch.cuda.is_available():
@@ -72,14 +75,25 @@ def set_model():
     return model, criterion
 
 def set_optimizer_and_scheduler(model):
-    # Set up optimizer with reduced learning rate
+    # Set up optimizer with same learning rate as SupCon
     optimizer = torch.optim.SGD(model.parameters(),
-                                lr=0.1,  # Reduced from 0.25 to 0.1
-                                momentum=0.9,
-                                weight_decay=1e-4)
+                               lr=0.15,
+                               momentum=0.9,
+                               weight_decay=1e-4)
     
-    # Define a learning rate scheduler
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
+    # Define warmup scheduler + more aggressive LR decay
+    num_epochs = 200  # Total epochs
+    warmup_epochs = 5  # Warmup period
+    
+    def lr_schedule(epoch):
+        # Linear warmup for warmup_epochs
+        if epoch < warmup_epochs:
+            return (epoch + 1) / warmup_epochs
+        # Cosine decay after warmup
+        else:
+            return 0.5 * (1 + math.cos(math.pi * (epoch - warmup_epochs) / (num_epochs - warmup_epochs)))
+    
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_schedule)
     
     return optimizer, scheduler
 

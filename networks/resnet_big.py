@@ -209,13 +209,9 @@ class HierarchicalResNet(ResNet):
             
             # Only print warnings for concerning gradients
             if grad_norm < 1e-5:
-                print(f"\nWARNING: Possible vanishing gradient in {name}")
-                print(f"Grad norm: {grad_norm:.4e}")
-                print(f"Grad mean: {grad.mean().item():.4e}")
+                print(f"\nWARNING: Vanishing gradient in {name} (norm: {grad_norm:.4e})")
             elif grad_norm > 1e2:
-                print(f"\nWARNING: Possible exploding gradient in {name}")
-                print(f"Grad norm: {grad_norm:.4e}")
-                print(f"Grad mean: {grad.mean().item():.4e}")
+                print(f"\nWARNING: Exploding gradient in {name} (norm: {grad_norm:.4e})")
     
     def forward(self, x):
         from utils.debug_utils import check_tensor
@@ -301,6 +297,8 @@ class HierarchicalResNet(ResNet):
             head_idx += 1
 
         stacked = torch.stack(stacked_out_tensor, dim=1)
+        # Only check final output stats
+        check_tensor(stacked, "Final normalized output", print_stats=True)
         return stacked
 
 
