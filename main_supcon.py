@@ -269,6 +269,7 @@ def main():
 
     # training routine
     for epoch in range(1, opt.epochs + 1):
+        print("Epoch: ", epoch)
         adjust_learning_rate(opt, optimizer, epoch)
 
         # train for one epoch

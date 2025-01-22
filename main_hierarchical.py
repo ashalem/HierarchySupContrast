@@ -14,8 +14,8 @@ from utils.debug_utils import check_tensor, check_gradients
 
 def set_loader():
     # Data loading parameters
-    batch_size = 256  # Reduced batch size for L4 GPU memory constraints
-    num_workers = 8   # Increased workers for better data loading parallelization
+    batch_size = 512  
+    num_workers = 12  
     data_folder = './datasets/'
 
     # CIFAR100 mean and std
