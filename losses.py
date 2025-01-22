@@ -145,12 +145,7 @@ class HierarchySupConLoss(nn.Module):
         for levelIdx in range(num_levels):
             level_features = features[:, levelIdx, :, :]  # [B, 2, feat_dim]
             level_labels = labels[:, levelIdx]  # [B]
-            
             loss = self.supcon_loss(level_features, level_labels)
-            
-            # Keep only essential monitoring
-            print(f"Level {levelIdx} Loss: {loss.item():.4f}")
-            
             level_losses.append(loss)
 
         level_losses = torch.stack(level_losses)  # [num_levels]
@@ -161,11 +156,5 @@ class HierarchySupConLoss(nn.Module):
             
         # Compute weighted sum of losses
         weighted_loss = torch.sum(level_losses * self.level_weights)
-        
-        # Print only essential contributions
-        print("\nLoss contributions:")
-        for i in range(num_levels):
-            contribution = (level_losses[i] * self.level_weights[i]).item()
-            print(f"Level {i}: {contribution:.4f} ({(contribution/weighted_loss.item())*100:.1f}%)")
         
         return weighted_loss    

@@ -298,7 +298,7 @@ class HierarchicalResNet(ResNet):
 
         stacked = torch.stack(stacked_out_tensor, dim=1)
         # Only check final output stats
-        check_tensor(stacked, "Final normalized output", print_stats=True)
+        # check_tensor(stacked, "Final normalized output", print_stats=True)
         return stacked
 
 
@@ -385,7 +385,7 @@ class HierarchicalSupConResNet(SupConResNet):
         from utils.debug_utils import check_tensor
         
         # Debug input
-        check_tensor(x, "HierarchicalSupConResNet input", print_stats=True)
+        # check_tensor(x, "HierarchicalSupConResNet input", print_stats=True)
         
         stacked_out_tensor = self.encoder(x)
         
@@ -396,20 +396,20 @@ class HierarchicalSupConResNet(SupConResNet):
             )
         
         # Debug encoder output
-        check_tensor(stacked_out_tensor, "Encoder output", print_stats=True)
+        # check_tensor(stacked_out_tensor, "Encoder output", print_stats=True)
         
         stacked_normalized = []
         for i in range(self.num_output_layers):
             after_head = stacked_out_tensor[:, i, :]
-            check_tensor(after_head, f"Features before normalization level {i}", print_stats=True)
+            # check_tensor(after_head, f"Features before normalization level {i}", print_stats=True)
             
             normalized_tensor = F.normalize(after_head, dim=1)
-            check_tensor(normalized_tensor, f"Features after normalization level {i}", print_stats=True)
+            # check_tensor(normalized_tensor, f"Features after normalization level {i}", print_stats=True)
             
             stacked_normalized.append(normalized_tensor)
             
         normalized_tensor_stacked = torch.stack(stacked_normalized, dim=1)
-        check_tensor(normalized_tensor_stacked, "Final normalized output", print_stats=True)
+        # check_tensor(normalized_tensor_stacked, "Final normalized output", print_stats=True)
         
         return normalized_tensor_stacked
 

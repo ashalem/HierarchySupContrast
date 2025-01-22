@@ -54,15 +54,14 @@ def set_model():
         name='resnet18',
         head='mlp',
         feat_dim=128,
-        is_output_layer=[False, True, False, True],
+        is_output_layer=[False, False, False, True],
     )
     
     # Define loss with weights for each level
     criterion = HierarchySupConLoss(
-        level_weights=[0.2, 0.8],  # More Weight for the second level
-        temperature=0.05,  # Reduced from 0.1 to make loss more sensitive
+        level_weights=[1],  # More Weight for the second level
+        temperature=0.1,  # Reduced from 0.1 to make loss more sensitive
         contrast_mode='all',
-        base_temperature=0.05  # Match base temperature with temperature
     )
 
     if torch.cuda.is_available():
@@ -77,13 +76,13 @@ def set_model():
 def set_optimizer_and_scheduler(model):
     # Increased learning rate from 0.15 to 0.3
     optimizer = torch.optim.SGD(model.parameters(),
-                               lr=0.3,  # Doubled the learning rate
+                               lr=0.1,  # Doubled the learning rate
                                momentum=0.9,
                                weight_decay=1e-4)
     
     # Define warmup scheduler + more aggressive LR decay
-    num_epochs = 200  # Total epochs
-    warmup_epochs = 5  # Warmup period
+    num_epochs = 100  # Total epochs
+    warmup_epochs = 3  # Warmup period
     
     def lr_schedule(epoch):
         # Linear warmup for warmup_epochs
@@ -118,15 +117,8 @@ def train(train_loader, model, criterion, optimizer, epoch):
         images = images.cuda(non_blocking=True)
         labels = labels.cuda(non_blocking=True)
         
-        # Debug: Check data location and shapes
-        check_tensor(images, "Input images")
-        check_tensor(labels, "Input labels")
-        
         # Forward pass
         features = model(images)  # [2*B, num_levels, feat_dim]
-        
-        # Debug: Check features
-        check_tensor(features, "Model output features")
         
         # Split features for contrastive loss
         bsz = labels.shape[0] // 2
@@ -134,31 +126,20 @@ def train(train_loader, model, criterion, optimizer, epoch):
         # Reshape for contrastive loss: [B, num_levels, num_views=2, feat_dim]
         features = torch.stack([f1, f2], dim=2)
         
-        # Debug: Check reshaped features
-        check_tensor(features, "Reshaped features for contrastive loss")
-        
         # Get labels for first half (since we duplicated them)
         labels = labels[:bsz]
         
         # Compute loss
         loss = criterion(features, labels)
         
-        # Debug: Check loss and gradients
-        check_tensor(loss, "Loss value")
-        
         # Backward and optimize
         optimizer.zero_grad()
         loss.backward()
-        
-        # Check gradients before step
-        if idx % 20 == 0:  # Reduced frequency to avoid spam
-            check_gradients(model, "Main model")
-        
         optimizer.step()
         
-        # Print progress
-        if idx % 20 == 0:
-            print(f'Train Epoch: [{epoch}][{idx}/{len(train_loader)}]\tLoss: {loss.item():.6f}')
+        # Print progress only every 50 batches
+        if idx % 50 == 0:
+            print(f'Train Epoch: [{epoch}][{idx}/{len(train_loader)}]\tLoss: {loss.item():.4f}')
     
     return loss.item()
 
@@ -197,9 +178,6 @@ def main():
     # Build model and criterion
     model, criterion = set_model()
     
-    # Debug: Check initial model and criterion device
-    print(f"Model device: {next(model.parameters()).device}")
-    
     # Build optimizer and scheduler
     optimizer, scheduler = set_optimizer_and_scheduler(model)
     
@@ -209,7 +187,7 @@ def main():
         time1 = time.time()
         loss = train(train_loader, model, criterion, optimizer, epoch)
         time2 = time.time()
-        print('Epoch {}, total time {:.2f}, loss {:.3f}'.format(
+        print('Epoch {}, total time {:.2f}, loss {:.4f}'.format(
             epoch, time2 - time1, loss))
             
         # Step the scheduler
