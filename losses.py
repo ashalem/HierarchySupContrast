@@ -109,32 +109,18 @@ class SupConLoss(nn.Module):
 
 
 class HierarchySupConLoss(nn.Module):
-    """Hierarchical Supervised Contrastive Loss.
-
-    This loss function extends the standard SupConLoss to handle multiple feature vectors per sample,
-    each corresponding to different hierarchical levels or steps in the network. It computes the supervised
-    contrastive loss for each level, applies a normalized weight to each, and aggregates them to produce
-    the final loss value.
-
-    Args:
-        level_weights (list or tuple of floats): Weights for each hierarchical level. Length must match
-            the number of levels in the features.
-        temperature (float, optional): Temperature parameter for scaling the logits. Default is 0.07.
-        contrast_mode (str, optional): Mode for contrastive loss, either 'all' or 'one'. Default is 'all'.
-        base_temperature (float, optional): Base temperature for scaling. Default is 0.07.
-    """
+    """Hierarchical Supervised Contrastive Loss."""
     def __init__(self, level_weights, temperature=0.07, contrast_mode='all', base_temperature=0.07):
         super(HierarchySupConLoss, self).__init__()
         if not isinstance(level_weights, (list, tuple)):
             raise TypeError(f'Expected level_weights to be a list or tuple, but got {type(level_weights)}')
         self.num_levels = len(level_weights)
         
-        # Convert to tensor and register as a parameter to ensure gradient flow
+        # Convert to tensor but keep as fixed weights (not learnable parameters)
         weights = torch.tensor(level_weights, dtype=torch.float32)
         if weights.sum() == 0:
             raise ValueError('Sum of level_weights must be greater than 0.')
-        normalized_weights = nn.Parameter(weights / weights.sum())  # Register as parameter
-        self.register_parameter('level_weights', normalized_weights)
+        self.level_weights = weights / weights.sum()  # Fixed normalized weights
 
         self.temperature = temperature
         self.contrast_mode = contrast_mode
@@ -146,10 +132,6 @@ class HierarchySupConLoss(nn.Module):
         )
 
     def forward(self, features, labels):
-        # Debugging: Check for NaNs and Infs in features and labels
-        check_tensor(features, "Features in HierarchySupConLoss.forward")
-        check_tensor(labels, "Labels in HierarchySupConLoss.forward")
-
         batch_size = features.shape[0]
         num_levels = features.shape[1]
         num_views = features.shape[2]
@@ -164,40 +146,26 @@ class HierarchySupConLoss(nn.Module):
             level_features = features[:, levelIdx, :, :]  # [B, 2, feat_dim]
             level_labels = labels[:, levelIdx]  # [B]
             
-            # Debugging: Check tensors before loss computation
-            check_tensor(level_features, f"Level {levelIdx} Features before SupConLoss")
-            check_tensor(level_labels, f"Level {levelIdx} Labels before SupConLoss")
-            
             loss = self.supcon_loss(level_features, level_labels)
             
-            # Monitor individual level losses
-            print(f"\nLevel {levelIdx} Loss: {loss.item():.4f}")
-            print(f"Level {levelIdx} Unique Labels: {torch.unique(level_labels).cpu().numpy()}")
+            # Keep only essential monitoring
+            print(f"Level {levelIdx} Loss: {loss.item():.4f}")
             
-            # Debugging: Check loss value
-            if torch.isnan(loss) or torch.isinf(loss):
-                print(f"WARNING: Loss at level {levelIdx} is NaN or Inf")
-                print(f"Level features stats: mean={level_features.mean():.4f}, std={level_features.std():.4f}")
-                print(f"Unique labels: {torch.unique(level_labels)}")
-
             level_losses.append(loss)
 
         level_losses = torch.stack(level_losses)  # [num_levels]
-        check_tensor(level_losses, "Stacked Level Losses")
         
-        # Apply softmax to level weights to ensure they sum to 1 and are positive
-        level_weights = F.softmax(self.level_weights, dim=0)
-        
-        # Print current level weights
-        print(f"\nCurrent level weights: {level_weights.detach().cpu().numpy()}")
-        
+        # Use fixed weights (no softmax needed since they're already normalized)
+        if self.level_weights.device != level_losses.device:
+            self.level_weights = self.level_weights.to(level_losses.device)
+            
         # Compute weighted sum of losses
-        weighted_loss = torch.sum(level_losses * level_weights)
+        weighted_loss = torch.sum(level_losses * self.level_weights)
         
-        # Print individual contributions
-        print(f"Individual level contributions:")
+        # Print only essential contributions
+        print("\nLoss contributions:")
         for i in range(num_levels):
-            contribution = (level_losses[i] * level_weights[i]).item()
-            print(f"Level {i}: {contribution:.4f} ({(contribution/weighted_loss.item())*100:.1f}% of total)")
+            contribution = (level_losses[i] * self.level_weights[i]).item()
+            print(f"Level {i}: {contribution:.4f} ({(contribution/weighted_loss.item())*100:.1f}%)")
         
         return weighted_loss    

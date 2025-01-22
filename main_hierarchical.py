@@ -75,9 +75,9 @@ def set_model():
     return model, criterion
 
 def set_optimizer_and_scheduler(model):
-    # Set up optimizer with same learning rate as SupCon
+    # Increased learning rate from 0.15 to 0.3
     optimizer = torch.optim.SGD(model.parameters(),
-                               lr=0.15,
+                               lr=0.3,  # Doubled the learning rate
                                momentum=0.9,
                                weight_decay=1e-4)
     
@@ -199,7 +199,6 @@ def main():
     
     # Debug: Check initial model and criterion device
     print(f"Model device: {next(model.parameters()).device}")
-    print(f"Criterion device: {next(criterion.parameters()).device}")
     
     # Build optimizer and scheduler
     optimizer, scheduler = set_optimizer_and_scheduler(model)
