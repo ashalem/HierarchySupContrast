@@ -76,7 +76,6 @@ def parse_option():
                         help='warm-up for large batch training')
     parser.add_argument('--trial', type=str, default='0',
                         help='id for recording multiple runs')
-
     opt = parser.parse_args()
 
     # check if dataset is path that passed required arguments
@@ -253,6 +252,7 @@ def train(train_loader, model, criterion, optimizer, epoch, opt):
 
 
 def main(opt=None):
+    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet18', '--learning_rate', '0.1', '--batch_size', '512', '--epochs', '100']
     if opt is None:
         opt = parse_option()
 
@@ -295,22 +295,8 @@ def main(opt=None):
 
 
 def main_with_constants():
-    opt = argparse.Namespace()
-    opt.dataset = 'cifar100'
-    opt.model = 'resnet18'
-    opt.learning_rate = 0.1
-    opt.batch_size = 512
-    opt.epochs = 100
     
-    # Adding the default values
-    opt.print_freq = 10
-    opt.save_freq = 50
-    opt.num_workers = 12
-    opt.temp = 0.07
-    opt.trial = '0'
-    opt.size = 32
-    
-    main(opt)
+    main()
 
 if __name__ == '__main__':
     main()
