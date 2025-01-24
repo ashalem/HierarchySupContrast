@@ -252,8 +252,9 @@ def train(train_loader, model, criterion, optimizer, epoch, opt):
     return losses.avg
 
 
-def main():
-    opt = parse_option()
+def main(opt=None):
+    if opt is None:
+        opt = parse_option()
 
     # build data loader
     train_loader = set_loader(opt)
@@ -292,6 +293,24 @@ def main():
         opt.save_folder, 'last.pth')
     save_model(model, optimizer, opt, opt.epochs, save_file)
 
+
+def main_with_constants():
+    opt = argparse.Namespace()
+    opt.dataset = 'cifar100'
+    opt.model = 'resnet18'
+    opt.learning_rate = 0.1
+    opt.batch_size = 512
+    opt.epochs = 100
+    
+    # Adding the default values
+    opt.print_freq = 10
+    opt.save_freq = 50
+    opt.num_workers = 12
+    opt.temp = 0.07
+    opt.trial = '0'
+    opt.size = 32
+    
+    main(opt)
 
 if __name__ == '__main__':
     main()
