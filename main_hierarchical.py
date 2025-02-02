@@ -14,7 +14,7 @@ from utils.debug_utils import check_tensor, check_gradients
 
 def set_loader():
     # Data loading parameters
-    batch_size = 512  
+    batch_size = 1024  
     num_workers = 12  
     data_folder = './datasets/'
 
@@ -99,8 +99,14 @@ def set_optimizer_and_scheduler(model):
 def train(train_loader, model, criterion, optimizer, epoch):
     """Train for one epoch"""
     model.train()
+    batch_time = AverageMeter()
+    data_time = AverageMeter()
+    losses = AverageMeter()
     
+    end = time.time()
     for idx, (images, labels) in enumerate(train_loader):
+        data_time.update(time.time() - end)
+        
         # Unpack hierarchical labels
         superclass_labels, class_labels = labels
         
@@ -131,17 +137,25 @@ def train(train_loader, model, criterion, optimizer, epoch):
         
         # Compute loss
         loss = criterion(features, labels)
+        losses.update(loss.item(), bsz)
         
         # Backward and optimize
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         
-        # Print progress only every 50 batches
-        if idx % 50 == 0:
-            print(f'Train Epoch: [{epoch}][{idx}/{len(train_loader)}]\tLoss: {loss.item():.4f}')
+        # Measure elapsed time
+        batch_time.update(time.time() - end)
+        end = time.time()
+        
+        # Print progress
+        if idx % 10 == 0:
+            print(f'Train: [{epoch}][{idx}/{len(train_loader)}]\t'
+                  f'BT {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                  f'DT {data_time.val:.3f} ({data_time.avg:.3f})\t'
+                  f'loss {loss.item():.3f} ({losses.avg:.3f})')
     
-    return loss.item()
+    return losses.avg
 
 class CIFAR100Hierarchy(datasets.CIFAR100):
     """CIFAR100 dataset with hierarchical labels"""
@@ -169,9 +183,6 @@ class CIFAR100Hierarchy(datasets.CIFAR100):
         return img, (coarse_label, fine_label)
 
 def main():
-    # Enable anomaly detection for better error messages
-    torch.autograd.set_detect_anomaly(True)
-    
     # Get data loader
     train_loader = set_loader()
     
@@ -184,11 +195,7 @@ def main():
     # Training loop
     for epoch in range(1, 201):  # 200 epochs
         # Train for one epoch
-        time1 = time.time()
         loss = train(train_loader, model, criterion, optimizer, epoch)
-        time2 = time.time()
-        print('Epoch {}, total time {:.2f}, loss {:.4f}'.format(
-            epoch, time2 - time1, loss))
             
         # Step the scheduler
         scheduler.step()
