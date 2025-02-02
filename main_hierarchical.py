@@ -54,12 +54,12 @@ def set_model():
         name='resnet18',
         head='mlp',
         feat_dim=128,
-        is_output_layer=[False, False, False, True],
+        is_output_layer=[False, True, False, True],
     )
     
     # Define loss with weights for each level
     criterion = HierarchySupConLoss(
-        level_weights=[1],  # More Weight for the second level
+        level_weights=[0.4, 0.6],  # More Weight for the second level
         temperature=0.1,  # Reduced from 0.1 to make loss more sensitive
         contrast_mode='all',
     )
