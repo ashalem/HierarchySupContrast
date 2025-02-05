@@ -8,17 +8,72 @@ import math
 import torch
 import torch.backends.cudnn as cudnn
 
-from main_ce import set_loader
+from main_ce import set_loader as set_loader_ce
 from util import AverageMeter
 from util import adjust_learning_rate, warmup_learning_rate, accuracy
 from util import set_optimizer
 from networks.resnet_big import HierarchicalSupConResNet, LinearClassifier
+from torchvision import transforms, datasets
 
 try:
     import apex
     from apex import amp, optimizers
 except ImportError:
     pass
+
+
+class CIFAR100Hierarchy(datasets.CIFAR100):
+    """CIFAR100 dataset with hierarchical labels"""
+    
+    def __init__(self, root, transform=None, download=False):
+        super().__init__(root=root, transform=transform, download=download)
+        
+        # Define the mapping of fine labels to coarse labels (20 superclasses)
+        self.coarse_labels = torch.tensor([
+            4, 1, 14, 8, 0, 6, 7, 7, 18, 3,
+            3, 14, 9, 18, 7, 11, 3, 9, 7, 11,
+            6, 11, 5, 10, 7, 6, 13, 15, 3, 15,
+            0, 11, 1, 10, 12, 14, 16, 9, 11, 5,
+            5, 19, 8, 8, 15, 13, 14, 17, 18, 10,
+            16, 4, 17, 4, 2, 0, 17, 4, 18, 17,
+            10, 3, 2, 12, 12, 16, 12, 1, 9, 19,
+            2, 10, 0, 1, 16, 12, 9, 13, 15, 13,
+            16, 19, 2, 4, 6, 19, 5, 5, 8, 19,
+            18, 1, 2, 15, 6, 0, 17, 8, 14, 13
+        ])
+        
+    def __getitem__(self, index):
+        img, fine_label = super().__getitem__(index)
+        coarse_label = self.coarse_labels[fine_label]
+        return img, (coarse_label, fine_label)
+
+
+def set_loader(opt):
+    """Wrapper around main_ce.set_loader that uses CIFAR100Hierarchy"""
+    # Get the transforms and parameters from main_ce's set_loader
+    train_loader, val_loader = set_loader_ce(opt)
+    
+    # Get the transforms from the existing loaders
+    train_transform = train_loader.dataset.transform
+    val_transform = val_loader.dataset.transform
+    
+    # Create new datasets with hierarchical labels
+    train_dataset = CIFAR100Hierarchy(root=opt.data_folder,
+                                    transform=train_transform,
+                                    download=True)
+    val_dataset = CIFAR100Hierarchy(root=opt.data_folder,
+                                  transform=val_transform,
+                                  download=True)
+    
+    # Create new data loaders with the hierarchical datasets
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=opt.batch_size, shuffle=True,
+        num_workers=opt.num_workers, pin_memory=True)
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset, batch_size=256, shuffle=False,
+        num_workers=8, pin_memory=True)
+    
+    return train_loader, val_loader
 
 
 def parse_option():
@@ -326,7 +381,7 @@ def validate(val_loader, model, classifiers, criterion, opt):
 
 
 def main(opt=None):
-    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet18', '--learning_rate', '0.1', '--batch_size', '512', '--epochs', '100', '--ckpt', './save/ckpt_epoch_100.pth']
+    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet18', '--learning_rate', '1', '--batch_size', '512', '--epochs', '100', '--ckpt', './save/ckpt_epoch_100.pth']
     if opt is None:
         opt = parse_option()
     print(opt)

@@ -1,28 +1,93 @@
 from __future__ import print_function
 
 import os
+import sys
+import argparse
 import time
+import math
+
 import torch
 import torch.backends.cudnn as cudnn
 from torchvision import transforms, datasets
-import math
 
 from util import TwoCropTransform, AverageMeter
 from networks.resnet_big import HierarchicalSupConResNet
 from losses import HierarchySupConLoss
 from utils.debug_utils import check_tensor, check_gradients
+from util import set_optimizer, save_model
 
-def set_loader():
-    # Data loading parameters
-    batch_size = 1024  
-    num_workers = 12  
-    data_folder = './datasets/'
+def parse_option():
+    parser = argparse.ArgumentParser('argument for training')
 
+    parser.add_argument('--print_freq', type=int, default=10,
+                        help='print frequency')
+    parser.add_argument('--save_freq', type=int, default=50,
+                        help='save frequency')
+    parser.add_argument('--batch_size', type=int, default=1024,
+                        help='batch_size')
+    parser.add_argument('--num_workers', type=int, default=12,
+                        help='num of workers to use')
+    parser.add_argument('--epochs', type=int, default=200,
+                        help='number of training epochs')
+
+    # optimization
+    parser.add_argument('--learning_rate', type=float, default=0.5,
+                        help='learning rate')
+    parser.add_argument('--weight_decay', type=float, default=1e-4,
+                        help='weight decay')
+    parser.add_argument('--momentum', type=float, default=0.9,
+                        help='momentum')
+    parser.add_argument('--temp', type=float, default=0.1,
+                        help='temperature for loss function')
+
+    # model dataset
+    parser.add_argument('--model', type=str, default='resnet18')
+    parser.add_argument('--dataset', type=str, default='cifar100',
+                        choices=['cifar100'], help='dataset')
+    parser.add_argument('--feat_dim', type=int, default=128,
+                        help='feature dimension')
+    parser.add_argument('--level_weights', type=str, default='0.4,0.6',
+                        help='weights for hierarchical levels')
+
+    # other setting
+    parser.add_argument('--cosine', action='store_true',
+                        help='using cosine annealing')
+    parser.add_argument('--warm', action='store_true',
+                        help='warm-up for large batch training')
+
+    opt = parser.parse_args()
+
+    # set the path according to the environment
+    opt.data_folder = './datasets/'
+    opt.model_path = './save/'
+
+    if opt.cosine:
+        opt.model_name = '{}_cosine'.format(opt.model_name)
+
+    # warm-up for large-batch training
+    if opt.batch_size > 256:
+        opt.warm = True
+    if opt.warm:
+        opt.model_name = '{}_warm'.format(opt.model_name)
+        opt.warmup_from = 0.01
+        opt.warm_epochs = 10
+        if opt.cosine:
+            eta_min = opt.learning_rate * 0.1
+            opt.warmup_to = eta_min + (opt.learning_rate - eta_min) * (
+                    1 + math.cos(math.pi * opt.warm_epochs / opt.epochs)) / 2
+        else:
+            opt.warmup_to = opt.learning_rate
+
+    if not os.path.isdir(opt.model_path):
+        os.makedirs(opt.model_path)
+
+    return opt
+
+def set_loader(opt):
     # CIFAR100 mean and std
-    # Mean and standard deviation values for CIFAR100 dataset normalization
-    mean = (0.5071, 0.4867, 0.4408)  # RGB channel means
-    std = (0.2675, 0.2565, 0.2761)   # RGB channel standard deviations
-    normalize = transforms.Normalize(mean=mean, std=std)  # Normalization transform
+    mean = (0.5071, 0.4867, 0.4408)
+    std = (0.2675, 0.2565, 0.2761)
+    normalize = transforms.Normalize(mean=mean, std=std)
 
     # Define data augmentation
     train_transform = transforms.Compose([
@@ -37,30 +102,33 @@ def set_loader():
     ])
 
     # Load CIFAR100 dataset
-    train_dataset = CIFAR100Hierarchy(root=data_folder,
+    train_dataset = CIFAR100Hierarchy(root=opt.data_folder,
                                     transform=TwoCropTransform(train_transform),
                                     download=True)
 
     # Create data loader
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True,
-        num_workers=num_workers, pin_memory=True)
+        train_dataset, batch_size=opt.batch_size, shuffle=True,
+        num_workers=opt.num_workers, pin_memory=True)
 
     return train_loader
 
-def set_model():
+def set_model(opt):
     # Define model with hierarchical outputs at layers 2 and 4
     model = HierarchicalSupConResNet(
-        name='resnet18',
+        name=opt.model,
         head='mlp',
-        feat_dim=128,
+        feat_dim=opt.feat_dim,
         is_output_layer=[False, True, False, True],
     )
     
+    # Parse level weights from string
+    level_weights = [float(w) for w in opt.level_weights.split(',')]
+    
     # Define loss with weights for each level
     criterion = HierarchySupConLoss(
-        level_weights=[0.4, 0.6],  # More Weight for the second level
-        temperature=0.1,  # Reduced from 0.1 to make loss more sensitive
+        level_weights=level_weights,
+        temperature=opt.temp,
         contrast_mode='all',
     )
 
@@ -73,30 +141,7 @@ def set_model():
 
     return model, criterion
 
-def set_optimizer_and_scheduler(model):
-    # Increased learning rate from 0.15 to 0.3
-    optimizer = torch.optim.SGD(model.parameters(),
-                               lr=0.1,  # Doubled the learning rate
-                               momentum=0.9,
-                               weight_decay=1e-4)
-    
-    # Define warmup scheduler + more aggressive LR decay
-    num_epochs = 100  # Total epochs
-    warmup_epochs = 3  # Warmup period
-    
-    def lr_schedule(epoch):
-        # Linear warmup for warmup_epochs
-        if epoch < warmup_epochs:
-            return (epoch + 1) / warmup_epochs
-        # Cosine decay after warmup
-        else:
-            return 0.5 * (1 + math.cos(math.pi * (epoch - warmup_epochs) / (num_epochs - warmup_epochs)))
-    
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_schedule)
-    
-    return optimizer, scheduler
-
-def train(train_loader, model, criterion, optimizer, epoch):
+def train(train_loader, model, criterion, optimizer, epoch, opt):
     """Train for one epoch"""
     model.train()
     batch_time = AverageMeter()
@@ -149,13 +194,47 @@ def train(train_loader, model, criterion, optimizer, epoch):
         end = time.time()
         
         # Print progress
-        if idx % 10 == 0:
-            print(f'Train: [{epoch}][{idx}/{len(train_loader)}]\t'
+        if (idx + 1) % opt.print_freq == 0:
+            print(f'Train: [{epoch}][{idx + 1}/{len(train_loader)}]\t'
                   f'BT {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                   f'DT {data_time.val:.3f} ({data_time.avg:.3f})\t'
                   f'loss {loss.item():.3f} ({losses.avg:.3f})')
+            sys.stdout.flush()
     
     return losses.avg
+
+def main(opt=None):
+    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet18', '--learning_rate', '0.5', '--batch_size', '1024', '--epochs', '200']
+    if opt is None:
+        opt = parse_option()
+
+    # Get data loader
+    train_loader = set_loader(opt)
+    
+    # Build model and criterion
+    model, criterion = set_model(opt)
+    
+    # Build optimizer
+    optimizer = set_optimizer(opt, model)
+    
+    # Training loop
+    for epoch in range(1, opt.epochs + 1):
+        # Train for one epoch
+        time1 = time.time()
+        loss = train(train_loader, model, criterion, optimizer, epoch, opt)
+        time2 = time.time()
+        print('epoch {}, total time {:.2f}, loss {:.3f}'.format(
+            epoch, time2 - time1, loss))
+
+        # Save model
+        if epoch % opt.save_freq == 0:
+            save_file = os.path.join(
+                opt.model_path, f'ckpt_epoch_{epoch}.pth')
+            save_model(model, optimizer, opt, epoch, save_file)
+
+    # save the last model
+    save_file = os.path.join(opt.model_path, 'last.pth')
+    save_model(model, optimizer, opt, opt.epochs, save_file)
 
 class CIFAR100Hierarchy(datasets.CIFAR100):
     """CIFAR100 dataset with hierarchical labels"""
@@ -181,37 +260,6 @@ class CIFAR100Hierarchy(datasets.CIFAR100):
         img, fine_label = super().__getitem__(index)
         coarse_label = self.coarse_labels[fine_label]
         return img, (coarse_label, fine_label)
-
-def main():
-    # Get data loader
-    train_loader = set_loader()
-    
-    # Build model and criterion
-    model, criterion = set_model()
-    
-    # Build optimizer and scheduler
-    optimizer, scheduler = set_optimizer_and_scheduler(model)
-    
-    # Training loop
-    for epoch in range(1, 201):  # 200 epochs
-        # Train for one epoch
-        loss = train(train_loader, model, criterion, optimizer, epoch)
-            
-        # Step the scheduler
-        scheduler.step()
-
-        # Save model
-        if epoch % 50 == 0:
-            save_file = f'./save/ckpt_epoch_{epoch}.pth'
-            if not os.path.exists('./save'):
-                os.makedirs('./save')
-            torch.save({
-                'epoch': epoch,
-                'model': model.state_dict(),
-                'optimizer': optimizer.state_dict(),
-            }, save_file)
-
-    return
 
 if __name__ == '__main__':
     main() 
