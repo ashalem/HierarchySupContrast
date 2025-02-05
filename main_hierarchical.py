@@ -60,6 +60,11 @@ def parse_option():
     # set the path according to the environment
     opt.data_folder = './datasets/'
     opt.model_path = './save/'
+    
+    
+    opt.model_name = '{}_{}_{}_lr_{}_decay_{}_bsz_{}_temp_{}_trial_{}'.\
+        format(opt.method, opt.dataset, opt.model, opt.learning_rate,
+               opt.weight_decay, opt.batch_size, opt.temp, opt.trial)
 
     if opt.cosine:
         opt.model_name = '{}_cosine'.format(opt.model_name)
