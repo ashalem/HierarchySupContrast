@@ -213,6 +213,7 @@ def main(opt=None):
     if opt is None:
         opt = parse_option()
 
+    print(opt)
     # Get data loader
     train_loader = set_loader(opt)
     
