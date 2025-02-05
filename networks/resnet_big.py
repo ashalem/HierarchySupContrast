@@ -379,9 +379,9 @@ class LinearClassifier(nn.Module):
         super(LinearClassifier, self).__init__()
         if feat_dim is None:
             _, feat_dim = model_dict[name]
-        print('classifier dim', feat_dim, num_classes)
+        # print('classifier dim', feat_dim, num_classes)
         self.fc = nn.Linear(feat_dim, num_classes)
 
     def forward(self, features):
-        print('features', features.shape)
+        # print('features', features.shape)
         return self.fc(features)
