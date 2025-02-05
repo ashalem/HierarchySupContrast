@@ -253,22 +253,15 @@ def train(train_loader, model, classifiers, criterion, optimizers, epoch, opt):
         class_losses.update(class_loss.item(), bsz)
         concat_losses.update(concat_loss.item(), bsz)
         
-        # Print shapes for debugging
-        print("Shapes:")
-        print("superclass_output:", superclass_output.shape)
-        print("superclass_labels:", superclass_labels.shape)
-        print("class_output:", class_output.shape)
-        print("class_labels:", class_labels.shape)
-        print("concat_output:", concat_output.shape)
         
         # Calculate accuracies
         superclass_acc1 = accuracy(superclass_output, superclass_labels, topk=(1,))  # Only top-1 for superclass (20 classes)
-        class_acc1 = accuracy(class_output, class_labels, topk=(1,))  # Top-1 and top-5 for fine classes (100 classes)
-        concat_acc1 = accuracy(concat_output, class_labels, topk=(1, ))  # Top-1 and top-5 for concatenated
+        class_acc1 = accuracy(class_output, class_labels, topk=(1,))  # Top-1 for fine classes (100 classes)
+        concat_acc1 = accuracy(concat_output, class_labels, topk=(1,))  # Top-1 for concatenated
         
-        superclass_top1.update(superclass_acc1[0], bsz)
-        class_top1.update(class_acc1[0], bsz)
-        concat_top1.update(concat_acc1[0], bsz)
+        superclass_top1.update(superclass_acc1[0].item(), bsz)
+        class_top1.update(class_acc1[0].item(), bsz)
+        concat_top1.update(concat_acc1[0].item(), bsz)
 
         # SGD
         superclass_optimizer.zero_grad()
@@ -357,13 +350,13 @@ def validate(val_loader, model, classifiers, criterion, opt):
             concat_losses.update(concat_loss.item(), bsz)
             
             # Calculate accuracies
-            superclass_acc1,  = accuracy(superclass_output, superclass_labels, topk=(1,))  # Only top-1 for superclass (20 classes)
-            class_acc1, = accuracy(class_output, class_labels, topk=(1,))  # Top-1 and top-5 for fine classes (100 classes)
-            concat_acc1, = accuracy(concat_output, class_labels, topk=(1,))  # Top-1 and top-5 for concatenated
+            superclass_acc1 = accuracy(superclass_output, superclass_labels, topk=(1,))  # Only top-1 for superclass (20 classes)
+            class_acc1 = accuracy(class_output, class_labels, topk=(1,))  # Top-1 for fine classes (100 classes)
+            concat_acc1 = accuracy(concat_output, class_labels, topk=(1,))  # Top-1 for concatenated
             
-            superclass_top1.update(superclass_acc1[0], bsz)
-            class_top1.update(class_acc1[0], bsz)
-            concat_top1.update(concat_acc1[0], bsz)
+            superclass_top1.update(superclass_acc1[0].item(), bsz)
+            class_top1.update(class_acc1[0].item(), bsz)
+            concat_top1.update(concat_acc1[0].item(), bsz)
 
             # measure elapsed time
             batch_time.update(time.time() - end)
