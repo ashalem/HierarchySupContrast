@@ -165,8 +165,8 @@ def set_model(opt):
     # 1. Superclass classifier
     # 2. Fine-grained classifier from fine features
     # 3. Fine-grained classifier from concatenated features
-    superclass_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_superclass)
-    class_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_cls)
+    superclass_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_superclass, feat_dim=128)
+    class_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_cls, feat_dim=128)
     concat_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_cls, feat_dim=256)  # 128*2 features
 
     ckpt = torch.load(opt.ckpt, map_location='cpu')
