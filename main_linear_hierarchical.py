@@ -253,9 +253,18 @@ def train(train_loader, model, classifiers, criterion, optimizers, epoch, opt):
         class_losses.update(class_loss.item(), bsz)
         concat_losses.update(concat_loss.item(), bsz)
         
+        # Print shapes for debugging
+        print("Shapes:")
+        print("superclass_output:", superclass_output.shape)
+        print("superclass_labels:", superclass_labels.shape)
+        print("class_output:", class_output.shape)
+        print("class_labels:", class_labels.shape)
+        print("concat_output:", concat_output.shape)
+        
+        # Calculate accuracies
         superclass_acc1, _ = accuracy(superclass_output, superclass_labels, topk=(1, 1))
-        class_acc1, _ = accuracy(class_output, class_labels, topk=(1, 5))
-        concat_acc1, _ = accuracy(concat_output, class_labels, topk=(1, 5))
+        class_acc1, class_acc5 = accuracy(class_output, class_labels, topk=(1, 5))
+        concat_acc1, concat_acc5 = accuracy(concat_output, class_labels, topk=(1, 5))
         
         superclass_top1.update(superclass_acc1[0], bsz)
         class_top1.update(class_acc1[0], bsz)
@@ -347,9 +356,10 @@ def validate(val_loader, model, classifiers, criterion, opt):
             class_losses.update(class_loss.item(), bsz)
             concat_losses.update(concat_loss.item(), bsz)
             
+            # Calculate accuracies
             superclass_acc1, _ = accuracy(superclass_output, superclass_labels, topk=(1, 1))
-            class_acc1, _ = accuracy(class_output, class_labels, topk=(1, 5))
-            concat_acc1, _ = accuracy(concat_output, class_labels, topk=(1, 5))
+            class_acc1, class_acc5 = accuracy(class_output, class_labels, topk=(1, 5))
+            concat_acc1, concat_acc5 = accuracy(concat_output, class_labels, topk=(1, 5))
             
             superclass_top1.update(superclass_acc1[0], bsz)
             class_top1.update(class_acc1[0], bsz)
