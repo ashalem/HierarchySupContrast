@@ -195,7 +195,7 @@ class HierarchicalResNet(ResNet):
                 nn.ReLU(inplace=True),
                 nn.Linear(self.dims[i], self.target_dim)
             ))
-        self.heads = nn.ModuleList(heads)  # Proper registration as submodules
+        self.heads = nn.ModuleList(heads)  # Proper registration as submodules ?
 
     def _track_layer_gradients(self, layer_name, tensor):
         """Helper to track gradients through layers"""
@@ -225,15 +225,7 @@ class HierarchicalResNet(ResNet):
             prepared_out = torch.flatten(prepared_out, 1)
             
             # Track gradients through first head's layers
-            head = self.heads[head_idx]
-            intermediate = head[0](prepared_out)  # First linear layer
-            self._track_layer_gradients(f"Head {head_idx} - Linear 1", intermediate)
-            
-            intermediate = head[1](intermediate)  # ReLU
-            intermediate = head[2](intermediate)  # Second linear layer
-            self._track_layer_gradients(f"Head {head_idx} - Linear 2", intermediate)
-            
-            prepared_out = intermediate
+            prepared_out = self.heads[head_idx](prepared_out)
             stacked_out_tensor.append(prepared_out)
             head_idx += 1
             
@@ -243,15 +235,7 @@ class HierarchicalResNet(ResNet):
             prepared_out = torch.flatten(prepared_out, 1)
             
             # Track gradients through second head's layers
-            head = self.heads[head_idx]
-            intermediate = head[0](prepared_out)  # First linear layer
-            self._track_layer_gradients(f"Head {head_idx} - Linear 1", intermediate)
-            
-            intermediate = head[1](intermediate)  # ReLU
-            intermediate = head[2](intermediate)  # Second linear layer
-            self._track_layer_gradients(f"Head {head_idx} - Linear 2", intermediate)
-            
-            prepared_out = intermediate
+            prepared_out = self.heads[head_idx](prepared_out)
             stacked_out_tensor.append(prepared_out)
             head_idx += 1
             
@@ -261,33 +245,17 @@ class HierarchicalResNet(ResNet):
             prepared_out = torch.flatten(prepared_out, 1)
             
             # Track gradients through third head's layers
-            head = self.heads[head_idx]
-            intermediate = head[0](prepared_out)  # First linear layer
-            self._track_layer_gradients(f"Head {head_idx} - Linear 1", intermediate)
-            
-            intermediate = head[1](intermediate)  # ReLU
-            intermediate = head[2](intermediate)  # Second linear layer
-            self._track_layer_gradients(f"Head {head_idx} - Linear 2", intermediate)
-            
-            prepared_out = intermediate
+            prepared_out = self.heads[head_idx](prepared_out)
             stacked_out_tensor.append(prepared_out)
             head_idx += 1
-            
+        
         out = self.layer4(out)
         if self.is_output_layer[3]:
             prepared_out = self.avgpool(out)
             prepared_out = torch.flatten(prepared_out, 1)
             
             # Track gradients through fourth head's layers
-            head = self.heads[head_idx]
-            intermediate = head[0](prepared_out)  # First linear layer
-            self._track_layer_gradients(f"Head {head_idx} - Linear 1", intermediate)
-            
-            intermediate = head[1](intermediate)  # ReLU
-            intermediate = head[2](intermediate)  # Second linear layer
-            self._track_layer_gradients(f"Head {head_idx} - Linear 2", intermediate)
-            
-            prepared_out = intermediate
+            prepared_out = self.heads[head_idx](prepared_out)
             stacked_out_tensor.append(prepared_out)
             head_idx += 1
 
@@ -407,7 +375,7 @@ class SupCEResNet(nn.Module):
 
 class LinearClassifier(nn.Module):
     """Linear classifier"""
-    def __init__(self, name='resnet50', num_classes=10, feat_dim=None):
+    def __init__(self, name='resnet18', num_classes=10, feat_dim=None):
         super(LinearClassifier, self).__init__()
         if feat_dim is None:
             _, feat_dim = model_dict[name]

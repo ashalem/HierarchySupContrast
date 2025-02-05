@@ -98,7 +98,12 @@ def parse_option():
 
 
 def set_model(opt):
-    model = HierarchicalSupConResNet(name=opt.model)
+    model = HierarchicalSupConResNet(
+        name=opt.model,
+        head='mlp',
+        feat_dim=128,  # Set to 128 to match checkpoint
+        is_output_layer=[False, True, False, True]  # Enable second output layer to match checkpoint
+    )
     criterion = torch.nn.CrossEntropyLoss()
 
     # Three classifiers:
