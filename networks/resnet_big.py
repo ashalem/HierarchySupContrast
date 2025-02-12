@@ -176,91 +176,44 @@ class PoolAdapter(nn.Module):
 
 class HierarchicalResNet(ResNet):
     def __init__(self, block_class, num_blocks, is_output_layer=[False, False, False, True], 
-                 in_channel=3, zero_init_residual=False, feat_dim=128):
+                 in_channel=3, zero_init_residual=False):
         super(HierarchicalResNet, self).__init__(block_class, num_blocks, in_channel, zero_init_residual)
         self.is_output_layer = is_output_layer
         self.num_output_layers = sum(is_output_layer)
         
-        # Add dimension matching
+        # Output dimensions of each layer
         self.dims = [64, 128, 256, 512]  # Output dimensions of each layer
-        self.target_dim = feat_dim
-        
-        # Create heads for each output layer (similar to SupConResNet)
-        heads = []
-        for i, is_output in enumerate(is_output_layer):
-            if not is_output:
-                continue
-            heads.append(nn.Sequential(
-                nn.Linear(self.dims[i], self.dims[i]),
-                nn.ReLU(inplace=True),
-                nn.Linear(self.dims[i], self.target_dim)
-            ))
-        self.heads = nn.ModuleList(heads)  # Proper registration as submodules ?
-
-    def _track_layer_gradients(self, layer_name, tensor):
-        """Helper to track gradients through layers"""
-        if tensor.requires_grad:
-            tensor.register_hook(lambda grad: self._gradient_hook(layer_name, grad))
-
-    def _gradient_hook(self, name, grad):
-        """Hook for tracking gradient statistics"""
-        with torch.no_grad():
-            grad_norm = grad.norm().item()
-            
-            # Only print warnings for concerning gradients
-            if grad_norm < 1e-5:
-                print(f"\nWARNING: Vanishing gradient in {name} (norm: {grad_norm:.4e})")
-            elif grad_norm > 1e2:
-                print(f"\nWARNING: Exploding gradient in {name} (norm: {grad_norm:.4e})")
     
     def forward(self, x):
-        stacked_out_tensor = []
-        head_idx = 0
+        features = []
         
-        # Track intermediate features and gradients
+        # Track intermediate features
         out = F.relu(self.bn1(self.conv1(x)))
-        out = self.layer1(out)  # Fixed: Include layer1 processing
+        out = self.layer1(out)
         if self.is_output_layer[0]:
             prepared_out = self.avgpool(out)
-            prepared_out = torch.flatten(prepared_out, 1)
-            
-            # Track gradients through first head's layers
-            prepared_out = self.heads[head_idx](prepared_out)
-            stacked_out_tensor.append(prepared_out)
-            head_idx += 1
+            prepared_out = torch.flatten(prepared_out, 1)  # [B, 64]
+            features.append(prepared_out)
             
         out = self.layer2(out)
         if self.is_output_layer[1]:
             prepared_out = self.avgpool(out)
-            prepared_out = torch.flatten(prepared_out, 1)
-            
-            # Track gradients through second head's layers
-            prepared_out = self.heads[head_idx](prepared_out)
-            stacked_out_tensor.append(prepared_out)
-            head_idx += 1
+            prepared_out = torch.flatten(prepared_out, 1)  # [B, 128]
+            features.append(prepared_out)
             
         out = self.layer3(out)
         if self.is_output_layer[2]:
             prepared_out = self.avgpool(out)
-            prepared_out = torch.flatten(prepared_out, 1)
-            
-            # Track gradients through third head's layers
-            prepared_out = self.heads[head_idx](prepared_out)
-            stacked_out_tensor.append(prepared_out)
-            head_idx += 1
+            prepared_out = torch.flatten(prepared_out, 1)  # [B, 256]
+            features.append(prepared_out)
         
         out = self.layer4(out)
         if self.is_output_layer[3]:
             prepared_out = self.avgpool(out)
-            prepared_out = torch.flatten(prepared_out, 1)
-            
-            # Track gradients through fourth head's layers
-            prepared_out = self.heads[head_idx](prepared_out)
-            stacked_out_tensor.append(prepared_out)
-            head_idx += 1
+            prepared_out = torch.flatten(prepared_out, 1)  # [B, 512]
+            features.append(prepared_out)
 
-        stacked = torch.stack(stacked_out_tensor, dim=1)
-        return stacked
+        return features  # Return list of features with different dimensions
 
 
 
@@ -338,27 +291,40 @@ class HierarchicalSupConResNet(SupConResNet):
         # Replace the encoder with our hierarchical version
         self.encoder = HierarchicalResNet(
             BasicBlock, [2, 2, 2, 2],
-            is_output_layer=is_output_layer,
-            feat_dim=feat_dim
+            is_output_layer=is_output_layer
         )
         
-    def forward(self, x):
-        stacked_out_tensor = self.encoder(x)
+        # Create separate MLP heads for each output layer
+        self.heads = nn.ModuleList()
+        dims = self.encoder.dims  # [64, 128, 256, 512]
+        head_idx = 0
+        for i, is_output in enumerate(is_output_layer):
+            if not is_output:
+                continue
+            self.heads.append(nn.Sequential(
+                nn.Linear(dims[i], dims[i]),
+                nn.ReLU(inplace=True),
+                nn.Linear(dims[i], feat_dim)
+            ))
         
-        if self.num_output_layers != stacked_out_tensor.shape[1]:
+    def forward(self, x):
+        # Get list of features from encoder (different dimensions)
+        features = self.encoder(x)  # List of [B, dim_i] tensors
+        
+        if self.num_output_layers != len(features):
             raise ValueError(
                 f"Number of output layers ({self.num_output_layers}) does not match "
-                f"the number of output layers in the encoder ({stacked_out_tensor.shape[1]})"
+                f"the number of features from encoder ({len(features)})"
             )
         
-        stacked_normalized = []
-        for i in range(self.num_output_layers):
-            after_head = stacked_out_tensor[:, i, :]
-            normalized_tensor = F.normalize(after_head, dim=1)
-            stacked_normalized.append(normalized_tensor)
+        # Apply MLP heads and normalize
+        normalized = []
+        for i, feat in enumerate(features):
+            after_head = self.heads[i](feat)  # [B, feat_dim]
+            norm = F.normalize(after_head, dim=1)  # [B, feat_dim]
+            normalized.append(norm)
             
-        normalized_tensor_stacked = torch.stack(stacked_normalized, dim=1)
-        return normalized_tensor_stacked
+        return torch.stack(normalized, dim=1)  # [B, num_outputs, feat_dim]
 
 
 class SupCEResNet(nn.Module):

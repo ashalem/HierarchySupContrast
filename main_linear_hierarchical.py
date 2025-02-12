@@ -231,10 +231,10 @@ def train(train_loader, model, classifiers, criterion, optimizers, epoch, opt):
 
         # compute loss
         with torch.no_grad():
-            features = model(images)  # [B, num_levels, feat_dim]
-            superclass_features = features[:, 0, :]  # Level 0 features
-            class_features = features[:, 1, :]  # Level 1 features
-            concat_features = torch.cat([superclass_features, class_features], dim=1)  # [B, feat_dim*2]
+            features = model(images)  # List of [B, dim_i] tensors
+            superclass_features = features[0]  # Level 0 features
+            class_features = features[1]  # Level 1 features
+            concat_features = torch.cat([superclass_features, class_features], dim=1)  # [B, dim0+dim1]
 
         # Superclass classification
         superclass_output = superclass_classifier(superclass_features.detach())
@@ -252,7 +252,6 @@ def train(train_loader, model, classifiers, criterion, optimizers, epoch, opt):
         superclass_losses.update(superclass_loss.item(), bsz)
         class_losses.update(class_loss.item(), bsz)
         concat_losses.update(concat_loss.item(), bsz)
-        
         
         # Calculate accuracies
         superclass_acc1 = accuracy(superclass_output, superclass_labels, topk=(1,))  # Only top-1 for superclass (20 classes)
@@ -327,10 +326,10 @@ def validate(val_loader, model, classifiers, criterion, opt):
             bsz = class_labels.shape[0]
 
             # forward
-            features = model(images)
-            superclass_features = features[:, 0, :]
-            class_features = features[:, 1, :]
-            concat_features = torch.cat([superclass_features, class_features], dim=1)
+            features = model(images)  # List of [B, dim_i] tensors
+            superclass_features = features[0]  # Level 0 features
+            class_features = features[1]  # Level 1 features
+            concat_features = torch.cat([superclass_features, class_features], dim=1)  # [B, dim0+dim1]
 
             # Superclass classification
             superclass_output = superclass_classifier(superclass_features)
