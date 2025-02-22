@@ -509,7 +509,7 @@ def visualize_predictions(val_loader, model, classifiers, epoch, num_images=4):
     plt.close()
 
 def main(opt=None):
-    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet18', '--learning_rate', '1', '--batch_size', '512', '--epochs', '100', '--ckpt', './save/ckpt_epoch_200.pth']
+    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet18', '--learning_rate', '1', '--batch_size', '512', '--epochs', '200', '--ckpt', './save/ckpt_epoch_200.pth']
     if opt is None:
         opt = parse_option()
     print(opt)
@@ -582,8 +582,8 @@ def main(opt=None):
         }])
         metrics_df = pd.concat([metrics_df, new_row], ignore_index=True)
         
-        # Plot metrics every 5 epochs
-        if epoch % 5 == 0 or epoch == opt.epochs:
+        # Plot metrics every 20 epochs
+        if epoch % 20 == 0 or epoch == opt.epochs:
             print(f"\nGenerating plots for epoch {epoch}")
             plot_metrics(metrics_df, epoch)
             visualize_predictions(val_loader, model, classifiers, epoch)
