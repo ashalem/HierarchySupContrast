@@ -85,7 +85,7 @@ def parse_option():
                         help='save frequency')
     parser.add_argument('--batch_size', type=int, default=256,
                         help='batch_size')
-    parser.add_argument('--num_workers', type=int, default=16,
+    parser.add_argument('--num_workers', type=int, default=12,
                         help='num of workers to use')
     parser.add_argument('--epochs', type=int, default=100,
                         help='number of training epochs')
@@ -408,7 +408,7 @@ def main(opt=None):
     # training routine
     for epoch in range(1, opt.epochs + 1):
         print('=== Epoch {} Training Shape Information ==='.format(epoch))
-        print('Model output layers:', model.is_output_layer)
+        print('Model output layers:', model.encoder.is_output_layer)
         
         # Print classifier dimensions
         print('Superclass classifier input dim:', classifiers[0].fc.in_features)
