@@ -430,6 +430,28 @@ def visualize_predictions(val_loader, model, classifiers, epoch, num_images=4):
     class_classifier.eval()
     concat_classifier.eval()
     
+    # CIFAR-100 class names
+    superclass_names = [
+        'aquatic mammals', 'fish', 'flowers', 'food containers', 'fruit and vegetables',
+        'household electrical devices', 'household furniture', 'insects', 'large carnivores',
+        'large man-made outdoor things', 'large natural outdoor scenes', 'large omnivores and herbivores',
+        'medium-sized mammals', 'non-insect invertebrates', 'people', 'reptiles',
+        'small mammals', 'trees', 'vehicles 1', 'vehicles 2'
+    ]
+    
+    class_names = [
+        'apple', 'aquarium_fish', 'baby', 'bear', 'beaver', 'bed', 'bee', 'beetle', 'bicycle', 'bottle',
+        'bowl', 'boy', 'bridge', 'bus', 'butterfly', 'camel', 'can', 'castle', 'caterpillar', 'cattle',
+        'chair', 'chimpanzee', 'clock', 'cloud', 'cockroach', 'couch', 'crab', 'crocodile', 'cup', 'dinosaur',
+        'dolphin', 'elephant', 'flatfish', 'forest', 'fox', 'girl', 'hamster', 'house', 'kangaroo', 'keyboard',
+        'lamp', 'lawn_mower', 'leopard', 'lion', 'lizard', 'lobster', 'man', 'maple_tree', 'motorcycle', 'mountain',
+        'mouse', 'mushroom', 'oak_tree', 'orange', 'orchid', 'otter', 'palm_tree', 'pear', 'pickup_truck', 'pine_tree',
+        'plain', 'plate', 'poppy', 'porcupine', 'possum', 'rabbit', 'raccoon', 'ray', 'road', 'rocket',
+        'rose', 'sea', 'seal', 'shark', 'shrew', 'skunk', 'skyscraper', 'snail', 'snake', 'spider',
+        'squirrel', 'streetcar', 'sunflower', 'sweet_pepper', 'table', 'tank', 'telephone', 'television', 'tiger', 'tractor',
+        'train', 'trout', 'tulip', 'turtle', 'wardrobe', 'whale', 'willow_tree', 'wolf', 'woman', 'worm'
+    ]
+    
     # Get a batch of images
     images, (superclass_labels, class_labels) = next(iter(val_loader))
     
@@ -437,9 +459,8 @@ def visualize_predictions(val_loader, model, classifiers, epoch, num_images=4):
     batch_size = images.shape[0]
     indices = random.sample(range(batch_size), min(num_images, batch_size))
     
-    # Create figure
-    fig, axes = plt.subplots(2, 2, figsize=(12, 12))
-    axes = axes.ravel()
+    # Create figure with a single row
+    fig, axes = plt.subplots(1, 4, figsize=(16, 4))
     
     # CIFAR100 mean and std for denormalization
     mean = torch.tensor((0.5071, 0.4867, 0.4408))
@@ -470,9 +491,16 @@ def visualize_predictions(val_loader, model, classifiers, epoch, num_images=4):
         axes[idx].imshow(img.permute(1, 2, 0))
         axes[idx].axis('off')
         
+        # Get class names
+        true_superclass_name = superclass_names[superclass_labels[i]]
+        true_class_name = class_names[class_labels[i]]
+        pred_superclass_name = superclass_names[superclass_preds[i]]
+        pred_class_name = class_names[class_preds[i]]
+        pred_concat_class_name = class_names[concat_preds[i]]
+        
         # Add predictions as title
-        title = f'True: (super={superclass_labels[i]}, class={class_labels[i]})\n'
-        title += f'Pred: super={superclass_preds[i]}, class={class_preds[i]}, concat={concat_preds[i]}'
+        title = f'True:\nsuper={true_superclass_name} ({superclass_labels[i]})\nclass={true_class_name} ({class_labels[i]})\n'
+        title += f'Pred:\nsuper={pred_superclass_name} ({superclass_preds[i]})\nclass={pred_class_name} ({class_preds[i]})\nconcat={pred_concat_class_name} ({concat_preds[i]})'
         axes[idx].set_title(title, fontsize=8)
     
     plt.tight_layout()
