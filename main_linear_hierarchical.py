@@ -419,9 +419,10 @@ def plot_metrics(df, epoch):
     
     plt.tight_layout()
     plt.savefig(f'metrics_epoch_{epoch}.png')
+    plt.show()
     plt.close()
 
-def visualize_predictions(val_loader, model, classifiers, num_images=4):
+def visualize_predictions(val_loader, model, classifiers, epoch, num_images=4):
     """Visualize predictions on random test images"""
     model.eval()
     superclass_classifier, class_classifier, concat_classifier = classifiers
@@ -475,7 +476,8 @@ def visualize_predictions(val_loader, model, classifiers, num_images=4):
         axes[idx].set_title(title, fontsize=8)
     
     plt.tight_layout()
-    plt.savefig(f'predictions.png')
+    plt.savefig(f'predictions_epoch_{epoch}.png')
+    plt.show()
     plt.close()
 
 def main(opt=None):
@@ -515,6 +517,10 @@ def main(opt=None):
         'concat_acc': val_accs[2]
     }])
     metrics_df = pd.concat([metrics_df, new_row], ignore_index=True)
+    
+    # Plot initial metrics
+    plot_metrics(metrics_df, 0)
+    visualize_predictions(val_loader, model, classifiers, 0)
 
     # training routine
     for epoch in range(1, opt.epochs + 1):
@@ -549,18 +555,16 @@ def main(opt=None):
         metrics_df = pd.concat([metrics_df, new_row], ignore_index=True)
         
         # Plot metrics every 5 epochs
-        if epoch % 5 == 0:
+        if epoch % 5 == 0 or epoch == opt.epochs:
+            print(f"\nGenerating plots for epoch {epoch}")
             plot_metrics(metrics_df, epoch)
-            visualize_predictions(val_loader, model, classifiers)
+            visualize_predictions(val_loader, model, classifiers, epoch)
+            print(f"Plots saved for epoch {epoch}\n")
             
         # Save metrics to csv
         metrics_df.to_csv('training_metrics.csv', index=False)
             
     print('best accuracy: {:.3f}'.format(best_acc))
-    
-    # Final plots
-    plot_metrics(metrics_df, opt.epochs)
-    visualize_predictions(val_loader, model, classifiers)
 
 
 if __name__ == '__main__':
