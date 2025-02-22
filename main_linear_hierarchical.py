@@ -14,6 +14,10 @@ from util import adjust_learning_rate, warmup_learning_rate, accuracy
 from util import set_optimizer
 from networks.resnet_big import HierarchicalSupConResNet, LinearClassifier
 from torchvision import transforms, datasets
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+import random
 
 try:
     import apex
@@ -387,12 +391,106 @@ def validate(val_loader, model, classifiers, criterion, opt):
            (superclass_top1.avg, class_top1.avg, concat_top1.avg)
 
 
+def plot_metrics(df, epoch):
+    """Plot loss and accuracy curves"""
+    plt.figure(figsize=(15, 5))
+    
+    # Plot losses
+    plt.subplot(1, 2, 1)
+    plt.plot(df['epoch'], df['superclass_loss'], label='Superclass')
+    plt.plot(df['epoch'], df['class_loss'], label='Class')
+    plt.plot(df['epoch'], df['concat_loss'], label='Concat')
+    plt.title('Test Loss vs Epoch')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.grid(True)
+    
+    # Plot accuracies
+    plt.subplot(1, 2, 2)
+    plt.plot(df['epoch'], df['superclass_acc'], label='Superclass')
+    plt.plot(df['epoch'], df['class_acc'], label='Class')
+    plt.plot(df['epoch'], df['concat_acc'], label='Concat')
+    plt.title('Test Accuracy vs Epoch')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend()
+    plt.grid(True)
+    
+    plt.tight_layout()
+    plt.savefig(f'metrics_epoch_{epoch}.png')
+    plt.close()
+
+def visualize_predictions(val_loader, model, classifiers, num_images=4):
+    """Visualize predictions on random test images"""
+    model.eval()
+    superclass_classifier, class_classifier, concat_classifier = classifiers
+    superclass_classifier.eval()
+    class_classifier.eval()
+    concat_classifier.eval()
+    
+    # Get a batch of images
+    images, (superclass_labels, class_labels) = next(iter(val_loader))
+    
+    # Select random indices
+    batch_size = images.shape[0]
+    indices = random.sample(range(batch_size), min(num_images, batch_size))
+    
+    # Create figure
+    fig, axes = plt.subplots(2, 2, figsize=(12, 12))
+    axes = axes.ravel()
+    
+    # CIFAR100 mean and std for denormalization
+    mean = torch.tensor((0.5071, 0.4867, 0.4408))
+    std = torch.tensor((0.2675, 0.2565, 0.2761))
+    
+    with torch.no_grad():
+        # Get features and predictions
+        features = model.encoder(images.cuda())
+        
+        # Get predictions from each classifier
+        superclass_output = superclass_classifier(features[0])
+        class_output = class_classifier(features[1])
+        concat_features = torch.cat([features[0], features[1]], dim=1)
+        concat_output = concat_classifier(concat_features)
+        
+        # Get predicted classes
+        _, superclass_preds = superclass_output.cpu().max(1)
+        _, class_preds = class_output.cpu().max(1)
+        _, concat_preds = concat_output.cpu().max(1)
+    
+    for idx, i in enumerate(indices):
+        # Denormalize image
+        img = images[i].cpu()
+        img = img * std[:, None, None] + mean[:, None, None]
+        img = torch.clamp(img, 0, 1)
+        
+        # Plot image
+        axes[idx].imshow(img.permute(1, 2, 0))
+        axes[idx].axis('off')
+        
+        # Add predictions as title
+        title = f'True: (super={superclass_labels[i]}, class={class_labels[i]})\n'
+        title += f'Pred: super={superclass_preds[i]}, class={class_preds[i]}, concat={concat_preds[i]}'
+        axes[idx].set_title(title, fontsize=8)
+    
+    plt.tight_layout()
+    plt.savefig(f'predictions.png')
+    plt.close()
+
 def main(opt=None):
     sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet18', '--learning_rate', '1', '--batch_size', '512', '--epochs', '100', '--ckpt', './save/ckpt_epoch_200.pth']
     if opt is None:
         opt = parse_option()
     print(opt)
     best_acc = 0
+    
+    # Create dataframe to store metrics
+    metrics_df = pd.DataFrame(columns=[
+        'epoch', 'superclass_loss', 'class_loss', 'concat_loss',
+        'superclass_acc', 'class_acc', 'concat_acc'
+    ])
+    
     # build data loader
     train_loader, val_loader = set_loader(opt)
 
@@ -404,36 +502,21 @@ def main(opt=None):
     class_optimizer = set_optimizer(opt, classifiers[1])
     concat_optimizer = set_optimizer(opt, classifiers[2])
     optimizers = (superclass_optimizer, class_optimizer, concat_optimizer)
+    
+    # Get initial test metrics
+    val_losses, val_accs = validate(val_loader, model, classifiers, criterion, opt)
+    metrics_df = metrics_df.append({
+        'epoch': 0,
+        'superclass_loss': val_losses[0],
+        'class_loss': val_losses[1],
+        'concat_loss': val_losses[2],
+        'superclass_acc': val_accs[0],
+        'class_acc': val_accs[1],
+        'concat_acc': val_accs[2]
+    }, ignore_index=True)
 
     # training routine
     for epoch in range(1, opt.epochs + 1):
-        # print('=== Epoch {} Training Shape Information ==='.format(epoch))
-        # print('Model output layers:', model.encoder.is_output_layer)
-        
-        # Print classifier dimensions
-        # print('Superclass classifier input dim:', classifiers[0].fc.in_features)
-        # print('Superclass classifier output dim:', classifiers[0].fc.out_features)
-        # print('Class classifier input dim:', classifiers[1].fc.in_features) 
-        # print('Class classifier output dim:', classifiers[1].fc.out_features)
-        # print('Concat classifier input dim:', classifiers[2].fc.in_features)
-        # print('Concat classifier output dim:', classifiers[2].fc.out_features)
-        
-        # Get sample batch to print shapes
-        sample_batch = next(iter(train_loader))
-        images, (superclass_labels, class_labels) = sample_batch
-        # print('\nBatch shapes:')
-        # print('Images:', images.shape)
-        # print('Superclass labels:', superclass_labels.shape)
-        # print('Class labels:', class_labels.shape)
-        
-        # Get feature shapes from model
-        # with torch.no_grad():
-        #     features = model.encoder(images.cuda())
-        #     print('\nFeature shapes from model:')
-        #     for i, feat in enumerate(features):
-        #         print(f'Level {i} features:', feat.shape)
-        
-        # print('=' * 50)
         adjust_learning_rate(opt, superclass_optimizer, epoch)
         adjust_learning_rate(opt, class_optimizer, epoch)
         adjust_learning_rate(opt, concat_optimizer, epoch)
@@ -449,10 +532,33 @@ def main(opt=None):
 
         # eval for one epoch
         val_losses, val_accs = validate(val_loader, model, classifiers, criterion, opt)
-        if val_accs[2] > best_acc:  # Track best accuracy of the concatenated classifier
+        if val_accs[2] > best_acc:
             best_acc = val_accs[2]
+        
+        # Store metrics
+        metrics_df = metrics_df.append({
+            'epoch': epoch,
+            'superclass_loss': val_losses[0],
+            'class_loss': val_losses[1],
+            'concat_loss': val_losses[2],
+            'superclass_acc': val_accs[0],
+            'class_acc': val_accs[1],
+            'concat_acc': val_accs[2]
+        }, ignore_index=True)
+        
+        # Plot metrics every 5 epochs
+        if epoch % 5 == 0:
+            plot_metrics(metrics_df, epoch)
+            visualize_predictions(val_loader, model, classifiers)
+            
+        # Save metrics to csv
+        metrics_df.to_csv('training_metrics.csv', index=False)
             
     print('best accuracy: {:.3f}'.format(best_acc))
+    
+    # Final plots
+    plot_metrics(metrics_df, opt.epochs)
+    visualize_predictions(val_loader, model, classifiers)
 
 
 if __name__ == '__main__':
