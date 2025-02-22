@@ -165,9 +165,11 @@ def set_model(opt):
     # 1. Superclass classifier
     # 2. Fine-grained classifier from fine features
     # 3. Fine-grained classifier from concatenated features
+    
+    
     superclass_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_superclass, feat_dim=128)
-    class_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_cls, feat_dim=128)
-    concat_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_cls, feat_dim=256)  # 128*2 features
+    class_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_cls, feat_dim=512)
+    concat_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_cls, feat_dim=640)  # 128*2 features
 
     ckpt = torch.load(opt.ckpt, map_location='cpu')
     state_dict = ckpt['model']
@@ -223,6 +225,13 @@ def train(train_loader, model, classifiers, criterion, optimizers, epoch, opt):
         superclass_labels = superclass_labels.cuda(non_blocking=True)
         class_labels = class_labels.cuda(non_blocking=True)
         bsz = class_labels.shape[0]
+        
+        # Print shapes for debugging
+        print('Images shape:', images.shape)
+        print('Labels shape:', len(labels))
+        print('Batch size:', bsz)
+        print('Superclass labels shape:', superclass_labels.shape)
+        print('Class labels shape:', class_labels.shape)
 
         # warm-up learning rate
         warmup_learning_rate(opt, epoch, idx, len(train_loader), superclass_optimizer)
