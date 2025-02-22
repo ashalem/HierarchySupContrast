@@ -505,7 +505,7 @@ def main(opt=None):
     
     # Get initial test metrics
     val_losses, val_accs = validate(val_loader, model, classifiers, criterion, opt)
-    metrics_df = metrics_df.append({
+    new_row = pd.DataFrame([{
         'epoch': 0,
         'superclass_loss': val_losses[0],
         'class_loss': val_losses[1],
@@ -513,7 +513,8 @@ def main(opt=None):
         'superclass_acc': val_accs[0],
         'class_acc': val_accs[1],
         'concat_acc': val_accs[2]
-    }, ignore_index=True)
+    }])
+    metrics_df = pd.concat([metrics_df, new_row], ignore_index=True)
 
     # training routine
     for epoch in range(1, opt.epochs + 1):
@@ -536,7 +537,7 @@ def main(opt=None):
             best_acc = val_accs[2]
         
         # Store metrics
-        metrics_df = metrics_df.append({
+        new_row = pd.DataFrame([{
             'epoch': epoch,
             'superclass_loss': val_losses[0],
             'class_loss': val_losses[1],
@@ -544,7 +545,8 @@ def main(opt=None):
             'superclass_acc': val_accs[0],
             'class_acc': val_accs[1],
             'concat_acc': val_accs[2]
-        }, ignore_index=True)
+        }])
+        metrics_df = pd.concat([metrics_df, new_row], ignore_index=True)
         
         # Plot metrics every 5 epochs
         if epoch % 5 == 0:
