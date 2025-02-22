@@ -231,21 +231,19 @@ def train(train_loader, model, classifiers, criterion, optimizers, epoch, opt):
 
         # compute loss
         with torch.no_grad():
-            features = model(images)  # List of [B, dim_i] tensors
-            superclass_features = features[0]  # Level 0 features
-            class_features = features[1]  # Level 1 features
-            concat_features = torch.cat([superclass_features, class_features], dim=1)  # [B, dim0+dim1]
+            features = model.encoder(images)  # List of features from different levels
 
-        # Superclass classification
-        superclass_output = superclass_classifier(superclass_features.detach())
+        # Superclass classification from level 1 features (64-dim)
+        superclass_output = superclass_classifier(features[0].detach())
         superclass_loss = criterion(superclass_output, superclass_labels)
 
-        # Class classification from fine features
-        class_output = class_classifier(class_features.detach())
+        # Class classification from level 2 features (128-dim)
+        class_output = class_classifier(features[1].detach())
         class_loss = criterion(class_output, class_labels)
 
         # Class classification from concatenated features
-        concat_output = concat_classifier(concat_features.detach())
+        concat_features = torch.cat([features[0].detach(), features[1].detach()], dim=1)  # Concatenate level 1 and 2
+        concat_output = concat_classifier(concat_features)
         concat_loss = criterion(concat_output, class_labels)
 
         # update metric
@@ -326,20 +324,18 @@ def validate(val_loader, model, classifiers, criterion, opt):
             bsz = class_labels.shape[0]
 
             # forward
-            features = model(images)  # List of [B, dim_i] tensors
-            superclass_features = features[0]  # Level 0 features
-            class_features = features[1]  # Level 1 features
-            concat_features = torch.cat([superclass_features, class_features], dim=1)  # [B, dim0+dim1]
+            features = model.encoder(images)  # List of features from different levels
 
-            # Superclass classification
-            superclass_output = superclass_classifier(superclass_features)
+            # Superclass classification from level 1 features (64-dim)
+            superclass_output = superclass_classifier(features[0])
             superclass_loss = criterion(superclass_output, superclass_labels)
 
-            # Class classification from fine features
-            class_output = class_classifier(class_features)
+            # Class classification from level 2 features (128-dim)
+            class_output = class_classifier(features[1])
             class_loss = criterion(class_output, class_labels)
 
             # Class classification from concatenated features
+            concat_features = torch.cat([features[0], features[1]], dim=1)  # Concatenate level 1 and 2
             concat_output = concat_classifier(concat_features)
             concat_loss = criterion(concat_output, class_labels)
 
