@@ -383,7 +383,7 @@ def validate(val_loader, model, classifiers, criterion, opt):
 
 
 def main(opt=None):
-    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet18', '--learning_rate', '1', '--batch_size', '512', '--epochs', '100', '--ckpt', './save/ckpt_epoch_100.pth']
+    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet18', '--learning_rate', '1', '--batch_size', '512', '--epochs', '100', '--ckpt', './save/ckpt_epoch_200.pth']
     if opt is None:
         opt = parse_option()
     print(opt)
