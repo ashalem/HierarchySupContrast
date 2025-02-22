@@ -227,11 +227,11 @@ def train(train_loader, model, classifiers, criterion, optimizers, epoch, opt):
         bsz = class_labels.shape[0]
         
         # Print shapes for debugging
-        print('Images shape:', images.shape)
-        print('Labels shape:', len(labels))
-        print('Batch size:', bsz)
-        print('Superclass labels shape:', superclass_labels.shape)
-        print('Class labels shape:', class_labels.shape)
+        # print('Images shape:', images.shape)
+        # print('Labels shape:', len(labels))
+        # print('Batch size:', bsz)
+        # print('Superclass labels shape:', superclass_labels.shape)
+        # print('Class labels shape:', class_labels.shape)
 
         # warm-up learning rate
         warmup_learning_rate(opt, epoch, idx, len(train_loader), superclass_optimizer)
@@ -407,33 +407,33 @@ def main(opt=None):
 
     # training routine
     for epoch in range(1, opt.epochs + 1):
-        print('=== Epoch {} Training Shape Information ==='.format(epoch))
-        print('Model output layers:', model.encoder.is_output_layer)
+        # print('=== Epoch {} Training Shape Information ==='.format(epoch))
+        # print('Model output layers:', model.encoder.is_output_layer)
         
         # Print classifier dimensions
-        print('Superclass classifier input dim:', classifiers[0].fc.in_features)
-        print('Superclass classifier output dim:', classifiers[0].fc.out_features)
-        print('Class classifier input dim:', classifiers[1].fc.in_features) 
-        print('Class classifier output dim:', classifiers[1].fc.out_features)
-        print('Concat classifier input dim:', classifiers[2].fc.in_features)
-        print('Concat classifier output dim:', classifiers[2].fc.out_features)
+        # print('Superclass classifier input dim:', classifiers[0].fc.in_features)
+        # print('Superclass classifier output dim:', classifiers[0].fc.out_features)
+        # print('Class classifier input dim:', classifiers[1].fc.in_features) 
+        # print('Class classifier output dim:', classifiers[1].fc.out_features)
+        # print('Concat classifier input dim:', classifiers[2].fc.in_features)
+        # print('Concat classifier output dim:', classifiers[2].fc.out_features)
         
         # Get sample batch to print shapes
         sample_batch = next(iter(train_loader))
         images, (superclass_labels, class_labels) = sample_batch
-        print('\nBatch shapes:')
-        print('Images:', images.shape)
-        print('Superclass labels:', superclass_labels.shape)
-        print('Class labels:', class_labels.shape)
+        # print('\nBatch shapes:')
+        # print('Images:', images.shape)
+        # print('Superclass labels:', superclass_labels.shape)
+        # print('Class labels:', class_labels.shape)
         
         # Get feature shapes from model
-        with torch.no_grad():
-            features = model.encoder(images.cuda())
-            print('\nFeature shapes from model:')
-            for i, feat in enumerate(features):
-                print(f'Level {i} features:', feat.shape)
+        # with torch.no_grad():
+        #     features = model.encoder(images.cuda())
+        #     print('\nFeature shapes from model:')
+        #     for i, feat in enumerate(features):
+        #         print(f'Level {i} features:', feat.shape)
         
-        print('=' * 50)
+        # print('=' * 50)
         adjust_learning_rate(opt, superclass_optimizer, epoch)
         adjust_learning_rate(opt, class_optimizer, epoch)
         adjust_learning_rate(opt, concat_optimizer, epoch)
