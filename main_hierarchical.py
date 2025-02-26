@@ -120,16 +120,25 @@ def set_loader(opt):
 
 def set_model(opt):
     # Define model with hierarchical outputs at layers 2 and 4
+    # model = HierarchicalSupConResNet(
+    #     name=opt.model,
+    #     head='mlp',
+    #     feat_dim=opt.feat_dim,
+    #     is_output_layer=[False, True, False, True],
+    # )
+    
+    # Define model with linear outputs at layer 4
     model = HierarchicalSupConResNet(
         name=opt.model,
         head='mlp',
         feat_dim=opt.feat_dim,
-        is_output_layer=[False, True, False, True],
+        is_output_layer=[False, False, False, True],
     )
     
     # Parse level weights from string
     level_weights = [float(w) for w in opt.level_weights.split(',')]
     
+    print(f'Level weights: {level_weights}')
     # Define loss with weights for each level
     criterion = HierarchySupConLoss(
         level_weights=level_weights,
@@ -209,7 +218,7 @@ def train(train_loader, model, criterion, optimizer, epoch, opt):
     return losses.avg
 
 def main(opt=None):
-    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet18', '--learning_rate', '0.5', '--batch_size', '1024', '--epochs', '200']
+    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet18', '--learning_rate', '0.5', '--batch_size', '1024', '--epochs', '200', '--level_weights', '1']
     if opt is None:
         opt = parse_option()
 

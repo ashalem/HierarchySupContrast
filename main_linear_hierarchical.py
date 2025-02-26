@@ -157,11 +157,19 @@ def parse_option():
 
 
 def set_model(opt):
+    # model = HierarchicalSupConResNet(
+    #     name=opt.model,
+    #     head='mlp',
+    #     feat_dim=128,  # Set to 128 to match checkpoint
+    #     is_output_layer=[False, True, False, True]  # Enable second output layer to match checkpoint
+    # )
+    
+    # Define model with linear outputs at layer 4
     model = HierarchicalSupConResNet(
         name=opt.model,
         head='mlp',
         feat_dim=128,  # Set to 128 to match checkpoint
-        is_output_layer=[False, True, False, True]  # Enable second output layer to match checkpoint
+        is_output_layer=[False, False, False, True]  # Enable second output layer to match checkpoint
     )
     criterion = torch.nn.CrossEntropyLoss()
 
@@ -171,9 +179,9 @@ def set_model(opt):
     # 3. Fine-grained classifier from concatenated features
     
     
-    superclass_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_superclass, feat_dim=128)
+    superclass_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_superclass, feat_dim=512)
     class_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_cls, feat_dim=512)
-    concat_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_cls, feat_dim=640)  # 128*2 features
+    concat_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_cls, feat_dim=1024)  # 128*2 features
 
     ckpt = torch.load(opt.ckpt, map_location='cpu')
     state_dict = ckpt['model']
@@ -251,11 +259,11 @@ def train(train_loader, model, classifiers, criterion, optimizers, epoch, opt):
         superclass_loss = criterion(superclass_output, superclass_labels)
 
         # Class classification from level 2 features (128-dim)
-        class_output = class_classifier(features[1].detach())
+        class_output = class_classifier(features[0].detach())
         class_loss = criterion(class_output, class_labels)
 
         # Class classification from concatenated features
-        concat_features = torch.cat([features[0].detach(), features[1].detach()], dim=1)  # Concatenate level 1 and 2
+        concat_features = torch.cat([features[0].detach(), features[0].detach()], dim=1)  # Concatenate level 1 and 2
         concat_output = concat_classifier(concat_features)
         concat_loss = criterion(concat_output, class_labels)
 
@@ -344,11 +352,11 @@ def validate(val_loader, model, classifiers, criterion, opt):
             superclass_loss = criterion(superclass_output, superclass_labels)
 
             # Class classification from level 2 features (128-dim)
-            class_output = class_classifier(features[1])
+            class_output = class_classifier(features[0])
             class_loss = criterion(class_output, class_labels)
 
             # Class classification from concatenated features
-            concat_features = torch.cat([features[0], features[1]], dim=1)  # Concatenate level 1 and 2
+            concat_features = torch.cat([features[0], features[0]], dim=1)  # Concatenate level 1 and 2
             concat_output = concat_classifier(concat_features)
             concat_loss = criterion(concat_output, class_labels)
 
@@ -472,8 +480,8 @@ def visualize_predictions(val_loader, model, classifiers, epoch, num_images=4):
         
         # Get predictions from each classifier
         superclass_output = superclass_classifier(features[0])
-        class_output = class_classifier(features[1])
-        concat_features = torch.cat([features[0], features[1]], dim=1)
+        class_output = class_classifier(features[0])
+        concat_features = torch.cat([features[0], features[0]], dim=1)
         concat_output = concat_classifier(concat_features)
         
         # Get predicted classes
