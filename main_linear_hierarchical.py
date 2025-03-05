@@ -165,16 +165,18 @@ def set_model(opt):
     )
     criterion = torch.nn.CrossEntropyLoss()
 
-    # Four classifiers:
+    # Five classifiers:
     # 1. Superclass classifier using early features (128-dim)
     # 2. Superclass classifier using deep features (512-dim)
-    # 3. Fine-grained classifier from deep features (512-dim)
-    # 4. Fine-grained classifier from concatenated features (640-dim)
+    # 3. Superclass classifier using concatenated features (640-dim)
+    # 4. Fine-grained classifier from deep features (512-dim)
+    # 5. Fine-grained classifier from concatenated features (640-dim)
     
     superclass_early = LinearClassifier(name=opt.model, num_classes=opt.n_superclass, feat_dim=128)
     superclass_deep = LinearClassifier(name=opt.model, num_classes=opt.n_superclass, feat_dim=512)
+    superclass_concat = LinearClassifier(name=opt.model, num_classes=opt.n_superclass, feat_dim=640)  # 128 + 512 features
     class_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_cls, feat_dim=512)
-    concat_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_cls, feat_dim=640)  # 128*2 features
+    concat_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_cls, feat_dim=640)  # 128 + 512 features
 
     ckpt = torch.load(opt.ckpt, map_location='cpu')
     state_dict = ckpt['model']
@@ -191,6 +193,7 @@ def set_model(opt):
         model = model.cuda()
         superclass_early = superclass_early.cuda()
         superclass_deep = superclass_deep.cuda()
+        superclass_concat = superclass_concat.cuda()
         class_classifier = class_classifier.cuda()
         concat_classifier = concat_classifier.cuda()
         criterion = criterion.cuda()
@@ -200,17 +203,18 @@ def set_model(opt):
     else:
         raise NotImplementedError('This code requires GPU')
 
-    return model, (superclass_early, superclass_deep, class_classifier, concat_classifier), criterion
+    return model, (superclass_early, superclass_deep, superclass_concat, class_classifier, concat_classifier), criterion
 
 
 def train(train_loader, model, classifiers, criterion, optimizers, epoch, opt):
     """one epoch training"""
     model.eval()
-    superclass_early, superclass_deep, class_classifier, concat_classifier = classifiers
-    superclass_optimizer_early, superclass_optimizer_deep, class_optimizer, concat_optimizer = optimizers
+    superclass_early, superclass_deep, superclass_concat, class_classifier, concat_classifier = classifiers
+    superclass_optimizer_early, superclass_optimizer_deep, superclass_optimizer_concat, class_optimizer, concat_optimizer = optimizers
     
     superclass_early.train()
     superclass_deep.train()
+    superclass_concat.train()
     class_classifier.train()
     concat_classifier.train()
 
@@ -218,10 +222,12 @@ def train(train_loader, model, classifiers, criterion, optimizers, epoch, opt):
     data_time = AverageMeter()
     superclass_losses_early = AverageMeter()
     superclass_losses_deep = AverageMeter()
+    superclass_losses_concat = AverageMeter()
     class_losses = AverageMeter()
     concat_losses = AverageMeter()
     superclass_top1_early = AverageMeter()
     superclass_top1_deep = AverageMeter()
+    superclass_top1_concat = AverageMeter()
     class_top1 = AverageMeter()
     concat_top1 = AverageMeter()
 
@@ -245,6 +251,7 @@ def train(train_loader, model, classifiers, criterion, optimizers, epoch, opt):
         # warm-up learning rate
         warmup_learning_rate(opt, epoch, idx, len(train_loader), superclass_optimizer_early)
         warmup_learning_rate(opt, epoch, idx, len(train_loader), superclass_optimizer_deep)
+        warmup_learning_rate(opt, epoch, idx, len(train_loader), superclass_optimizer_concat)
         warmup_learning_rate(opt, epoch, idx, len(train_loader), class_optimizer)
         warmup_learning_rate(opt, epoch, idx, len(train_loader), concat_optimizer)
 
@@ -260,29 +267,38 @@ def train(train_loader, model, classifiers, criterion, optimizers, epoch, opt):
         superclass_output_deep = superclass_deep(features[1].detach())
         superclass_loss_deep = criterion(superclass_output_deep, superclass_labels)
 
+        # Prepare concatenated features
+        concat_features = torch.cat([features[0].detach(), features[1].detach()], dim=1)
+
+        # Superclass classification from concatenated features (640-dim)
+        superclass_output_concat = superclass_concat(concat_features)
+        superclass_loss_concat = criterion(superclass_output_concat, superclass_labels)
+
         # Class classification from deep features (512-dim)
         class_output = class_classifier(features[1].detach())
         class_loss = criterion(class_output, class_labels)
 
         # Class classification from concatenated features
-        concat_features = torch.cat([features[0].detach(), features[1].detach()], dim=1)
         concat_output = concat_classifier(concat_features)
         concat_loss = criterion(concat_output, class_labels)
 
         # update metric
         superclass_losses_early.update(superclass_loss_early.item(), bsz)
         superclass_losses_deep.update(superclass_loss_deep.item(), bsz)
+        superclass_losses_concat.update(superclass_loss_concat.item(), bsz)
         class_losses.update(class_loss.item(), bsz)
         concat_losses.update(concat_loss.item(), bsz)
         
         # Calculate accuracies
         superclass_acc1_early = accuracy(superclass_output_early, superclass_labels, topk=(1,))
         superclass_acc1_deep = accuracy(superclass_output_deep, superclass_labels, topk=(1,))
+        superclass_acc1_concat = accuracy(superclass_output_concat, superclass_labels, topk=(1,))
         class_acc1 = accuracy(class_output, class_labels, topk=(1,))
         concat_acc1 = accuracy(concat_output, class_labels, topk=(1,))
         
         superclass_top1_early.update(superclass_acc1_early[0].item(), bsz)
         superclass_top1_deep.update(superclass_acc1_deep[0].item(), bsz)
+        superclass_top1_concat.update(superclass_acc1_concat[0].item(), bsz)
         class_top1.update(class_acc1[0].item(), bsz)
         concat_top1.update(concat_acc1[0].item(), bsz)
 
@@ -294,6 +310,10 @@ def train(train_loader, model, classifiers, criterion, optimizers, epoch, opt):
         superclass_optimizer_deep.zero_grad()
         superclass_loss_deep.backward()
         superclass_optimizer_deep.step()
+
+        superclass_optimizer_concat.zero_grad()
+        superclass_loss_concat.backward()
+        superclass_optimizer_concat.step()
 
         class_optimizer.zero_grad()
         class_loss.backward()
@@ -314,38 +334,44 @@ def train(train_loader, model, classifiers, criterion, optimizers, epoch, opt):
                   'DT {data_time.val:.3f} ({data_time.avg:.3f})\t'
                   'S-Early-loss {sloss.val:.3f} ({sloss.avg:.3f})\t'
                   'S-Deep-loss {sloss2.val:.3f} ({sloss2.avg:.3f})\t'
+                  'S-Concat-loss {sloss3.val:.3f} ({sloss3.avg:.3f})\t'
                   'C-loss {closs.val:.3f} ({closs.avg:.3f})\t'
                   'CC-loss {ccloss.val:.3f} ({ccloss.avg:.3f})\t'
                   'S-Early-Acc@1 {stop1.val:.3f} ({stop1.avg:.3f})\t'
-                  'S-Deep-Acc@1 {stop1_2.val:.3f} ({stop1_2.avg:.3f})\t'
+                  'S-Deep-Acc@1 {stop2.val:.3f} ({stop2.avg:.3f})\t'
+                  'S-Concat-Acc@1 {stop3.val:.3f} ({stop3.avg:.3f})\t'
                   'C-Acc@1 {ctop1.val:.3f} ({ctop1.avg:.3f})\t'
                   'CC-Acc@1 {cctop1.val:.3f} ({cctop1.avg:.3f})'.format(
                    epoch, idx + 1, len(train_loader), batch_time=batch_time,
                    data_time=data_time, sloss=superclass_losses_early, sloss2=superclass_losses_deep,
-                   closs=class_losses, ccloss=concat_losses, stop1=superclass_top1_early,
-                   stop1_2=superclass_top1_deep, ctop1=class_top1, cctop1=concat_top1))
+                   sloss3=superclass_losses_concat, closs=class_losses, ccloss=concat_losses,
+                   stop1=superclass_top1_early, stop2=superclass_top1_deep, stop3=superclass_top1_concat,
+                   ctop1=class_top1, cctop1=concat_top1))
             sys.stdout.flush()
 
-    return (superclass_losses_early.avg, superclass_losses_deep.avg, class_losses.avg, concat_losses.avg), \
-           (superclass_top1_early.avg, superclass_top1_deep.avg, class_top1.avg, concat_top1.avg)
+    return (superclass_losses_early.avg, superclass_losses_deep.avg, superclass_losses_concat.avg, class_losses.avg, concat_losses.avg), \
+           (superclass_top1_early.avg, superclass_top1_deep.avg, superclass_top1_concat.avg, class_top1.avg, concat_top1.avg)
 
 
 def validate(val_loader, model, classifiers, criterion, opt):
     """validation"""
     model.eval()
-    superclass_early, superclass_deep, class_classifier, concat_classifier = classifiers
+    superclass_early, superclass_deep, superclass_concat, class_classifier, concat_classifier = classifiers
     superclass_early.eval()
     superclass_deep.eval()
+    superclass_concat.eval()
     class_classifier.eval()
     concat_classifier.eval()
 
     batch_time = AverageMeter()
     superclass_losses_early = AverageMeter()
     superclass_losses_deep = AverageMeter()
+    superclass_losses_concat = AverageMeter()
     class_losses = AverageMeter()
     concat_losses = AverageMeter()
     superclass_top1_early = AverageMeter()
     superclass_top1_deep = AverageMeter()
+    superclass_top1_concat = AverageMeter()
     class_top1 = AverageMeter()
     concat_top1 = AverageMeter()
 
@@ -369,29 +395,38 @@ def validate(val_loader, model, classifiers, criterion, opt):
             superclass_output_deep = superclass_deep(features[1])
             superclass_loss_deep = criterion(superclass_output_deep, superclass_labels)
 
+            # Prepare concatenated features
+            concat_features = torch.cat([features[0], features[1]], dim=1)
+
+            # Superclass classification from concatenated features (640-dim)
+            superclass_output_concat = superclass_concat(concat_features)
+            superclass_loss_concat = criterion(superclass_output_concat, superclass_labels)
+
             # Class classification from deep features (512-dim)
             class_output = class_classifier(features[1])
             class_loss = criterion(class_output, class_labels)
 
             # Class classification from concatenated features
-            concat_features = torch.cat([features[0], features[1]], dim=1)
             concat_output = concat_classifier(concat_features)
             concat_loss = criterion(concat_output, class_labels)
 
             # update metric
             superclass_losses_early.update(superclass_loss_early.item(), bsz)
             superclass_losses_deep.update(superclass_loss_deep.item(), bsz)
+            superclass_losses_concat.update(superclass_loss_concat.item(), bsz)
             class_losses.update(class_loss.item(), bsz)
             concat_losses.update(concat_loss.item(), bsz)
             
             # Calculate accuracies
             superclass_acc1_early = accuracy(superclass_output_early, superclass_labels, topk=(1,))
             superclass_acc1_deep = accuracy(superclass_output_deep, superclass_labels, topk=(1,))
+            superclass_acc1_concat = accuracy(superclass_output_concat, superclass_labels, topk=(1,))
             class_acc1 = accuracy(class_output, class_labels, topk=(1,))
             concat_acc1 = accuracy(concat_output, class_labels, topk=(1,))
             
             superclass_top1_early.update(superclass_acc1_early[0].item(), bsz)
             superclass_top1_deep.update(superclass_acc1_deep[0].item(), bsz)
+            superclass_top1_concat.update(superclass_acc1_concat[0].item(), bsz)
             class_top1.update(class_acc1[0].item(), bsz)
             concat_top1.update(concat_acc1[0].item(), bsz)
 
@@ -404,24 +439,27 @@ def validate(val_loader, model, classifiers, criterion, opt):
                       'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                       'S-Early-Loss {sloss.val:.4f} ({sloss.avg:.4f})\t'
                       'S-Deep-Loss {sloss2.val:.4f} ({sloss2.avg:.4f})\t'
+                      'S-Concat-Loss {sloss3.val:.4f} ({sloss3.avg:.4f})\t'
                       'C-Loss {closs.val:.4f} ({closs.avg:.4f})\t'
                       'CC-Loss {ccloss.val:.4f} ({ccloss.avg:.4f})\t'
                       'S-Early-Acc@1 {stop1.val:.3f} ({stop1.avg:.3f})\t'
-                      'S-Deep-Acc@1 {stop1_2.val:.3f} ({stop1_2.avg:.3f})\t'
+                      'S-Deep-Acc@1 {stop2.val:.3f} ({stop2.avg:.3f})\t'
+                      'S-Concat-Acc@1 {stop3.val:.3f} ({stop3.avg:.3f})\t'
                       'C-Acc@1 {ctop1.val:.3f} ({ctop1.avg:.3f})\t'
                       'CC-Acc@1 {cctop1.val:.3f} ({cctop1.avg:.3f})'.format(
                        idx, len(val_loader), batch_time=batch_time,
                        sloss=superclass_losses_early, sloss2=superclass_losses_deep,
-                       closs=class_losses, ccloss=concat_losses,
-                       stop1=superclass_top1_early, stop1_2=superclass_top1_deep,
+                       sloss3=superclass_losses_concat, closs=class_losses, ccloss=concat_losses,
+                       stop1=superclass_top1_early, stop2=superclass_top1_deep, stop3=superclass_top1_concat,
                        ctop1=class_top1, cctop1=concat_top1))
 
     print(' * Superclass (Early) Acc@1 {stop1.avg:.3f}'.format(stop1=superclass_top1_early))
     print(' * Superclass (Deep) Acc@1 {stop1.avg:.3f}'.format(stop1=superclass_top1_deep))
+    print(' * Superclass (Concat) Acc@1 {stop1.avg:.3f}'.format(stop1=superclass_top1_concat))
     print(' * Class Acc@1 {ctop1.avg:.3f}'.format(ctop1=class_top1))
     print(' * Concat Class Acc@1 {cctop1.avg:.3f}'.format(cctop1=concat_top1))
-    return (superclass_losses_early.avg, superclass_losses_deep.avg, class_losses.avg, concat_losses.avg), \
-           (superclass_top1_early.avg, superclass_top1_deep.avg, class_top1.avg, concat_top1.avg)
+    return (superclass_losses_early.avg, superclass_losses_deep.avg, superclass_losses_concat.avg, class_losses.avg, concat_losses.avg), \
+           (superclass_top1_early.avg, superclass_top1_deep.avg, superclass_top1_concat.avg, class_top1.avg, concat_top1.avg)
 
 
 def plot_metrics(df, epoch):
@@ -432,6 +470,7 @@ def plot_metrics(df, epoch):
     plt.subplot(1, 2, 1)
     plt.plot(df['epoch'], df['superclass_loss_early'], label='Superclass (Early)')
     plt.plot(df['epoch'], df['superclass_loss_deep'], label='Superclass (Deep)')
+    plt.plot(df['epoch'], df['superclass_loss_concat'], label='Superclass (Concat)')
     plt.plot(df['epoch'], df['class_loss'], label='Class')
     plt.plot(df['epoch'], df['concat_loss'], label='Concat')
     plt.title('Test Loss vs Epoch')
@@ -444,6 +483,7 @@ def plot_metrics(df, epoch):
     plt.subplot(1, 2, 2)
     plt.plot(df['epoch'], df['superclass_acc_early'], label='Superclass (Early)')
     plt.plot(df['epoch'], df['superclass_acc_deep'], label='Superclass (Deep)')
+    plt.plot(df['epoch'], df['superclass_acc_concat'], label='Superclass (Concat)')
     plt.plot(df['epoch'], df['class_acc'], label='Class')
     plt.plot(df['epoch'], df['concat_acc'], label='Concat')
     plt.title('Test Accuracy vs Epoch')
@@ -460,9 +500,10 @@ def plot_metrics(df, epoch):
 def visualize_predictions(val_loader, model, classifiers, epoch, num_images=4):
     """Visualize predictions on random test images"""
     model.eval()
-    superclass_early, superclass_deep, class_classifier, concat_classifier = classifiers
+    superclass_early, superclass_deep, superclass_concat, class_classifier, concat_classifier = classifiers
     superclass_early.eval()
     superclass_deep.eval()
+    superclass_concat.eval()
     class_classifier.eval()
     concat_classifier.eval()
     
@@ -509,13 +550,15 @@ def visualize_predictions(val_loader, model, classifiers, epoch, num_images=4):
         # Get predictions from each classifier
         superclass_output_early = superclass_early(features[0])
         superclass_output_deep = superclass_deep(features[1])
-        class_output = class_classifier(features[1])
         concat_features = torch.cat([features[0], features[1]], dim=1)
+        superclass_output_concat = superclass_concat(concat_features)
+        class_output = class_classifier(features[1])
         concat_output = concat_classifier(concat_features)
         
         # Get predicted classes
         _, superclass_preds_early = superclass_output_early.cpu().max(1)
         _, superclass_preds_deep = superclass_output_deep.cpu().max(1)
+        _, superclass_preds_concat = superclass_output_concat.cpu().max(1)
         _, class_preds = class_output.cpu().max(1)
         _, concat_preds = concat_output.cpu().max(1)
     
@@ -534,12 +577,15 @@ def visualize_predictions(val_loader, model, classifiers, epoch, num_images=4):
         true_class_name = class_names[class_labels[i]]
         pred_superclass_name_early = superclass_names[superclass_preds_early[i]]
         pred_superclass_name_deep = superclass_names[superclass_preds_deep[i]]
+        pred_superclass_name_concat = superclass_names[superclass_preds_concat[i]]
         pred_class_name = class_names[class_preds[i]]
         pred_concat_class_name = class_names[concat_preds[i]]
         
         # Add predictions as title
         title = f'True:\nsuper={true_superclass_name} ({superclass_labels[i]})\nclass={true_class_name} ({class_labels[i]})\n'
-        title += f'Pred:\nsuper(early)={pred_superclass_name_early} ({superclass_preds_early[i]})\nsuper(deep)={pred_superclass_name_deep} ({superclass_preds_deep[i]})\n'
+        title += f'Pred:\nsuper(early)={pred_superclass_name_early} ({superclass_preds_early[i]})\n'
+        title += f'super(deep)={pred_superclass_name_deep} ({superclass_preds_deep[i]})\n'
+        title += f'super(concat)={pred_superclass_name_concat} ({superclass_preds_concat[i]})\n'
         title += f'class={pred_class_name} ({class_preds[i]})\nconcat={pred_concat_class_name} ({concat_preds[i]})'
         axes[idx].set_title(title, fontsize=8)
     
@@ -557,8 +603,9 @@ def main(opt=None):
     
     # Create dataframe to store metrics
     metrics_df = pd.DataFrame(columns=[
-        'epoch', 'superclass_loss_early', 'superclass_loss_deep', 'class_loss', 'concat_loss',
-        'superclass_acc_early', 'superclass_acc_deep', 'class_acc', 'concat_acc'
+        'epoch', 'superclass_loss_early', 'superclass_loss_deep', 'superclass_loss_concat',
+        'class_loss', 'concat_loss', 'superclass_acc_early', 'superclass_acc_deep',
+        'superclass_acc_concat', 'class_acc', 'concat_acc'
     ])
     
     # build data loader
@@ -570,9 +617,11 @@ def main(opt=None):
     # build optimizer
     superclass_optimizer_early = set_optimizer(opt, classifiers[0])
     superclass_optimizer_deep = set_optimizer(opt, classifiers[1])
-    class_optimizer = set_optimizer(opt, classifiers[2])
-    concat_optimizer = set_optimizer(opt, classifiers[3])
-    optimizers = (superclass_optimizer_early, superclass_optimizer_deep, class_optimizer, concat_optimizer)
+    superclass_optimizer_concat = set_optimizer(opt, classifiers[2])
+    class_optimizer = set_optimizer(opt, classifiers[3])
+    concat_optimizer = set_optimizer(opt, classifiers[4])
+    optimizers = (superclass_optimizer_early, superclass_optimizer_deep, superclass_optimizer_concat,
+                 class_optimizer, concat_optimizer)
     
     # Get initial test metrics
     val_losses, val_accs = validate(val_loader, model, classifiers, criterion, opt)
@@ -580,12 +629,14 @@ def main(opt=None):
         'epoch': 0,
         'superclass_loss_early': val_losses[0],
         'superclass_loss_deep': val_losses[1],
-        'class_loss': val_losses[2],
-        'concat_loss': val_losses[3],
+        'superclass_loss_concat': val_losses[2],
+        'class_loss': val_losses[3],
+        'concat_loss': val_losses[4],
         'superclass_acc_early': val_accs[0],
         'superclass_acc_deep': val_accs[1],
-        'class_acc': val_accs[2],
-        'concat_acc': val_accs[3]
+        'superclass_acc_concat': val_accs[2],
+        'class_acc': val_accs[3],
+        'concat_acc': val_accs[4]
     }])
     metrics_df = pd.concat([metrics_df, new_row], ignore_index=True)
     
@@ -597,6 +648,7 @@ def main(opt=None):
     for epoch in range(1, opt.epochs + 1):
         adjust_learning_rate(opt, superclass_optimizer_early, epoch)
         adjust_learning_rate(opt, superclass_optimizer_deep, epoch)
+        adjust_learning_rate(opt, superclass_optimizer_concat, epoch)
         adjust_learning_rate(opt, class_optimizer, epoch)
         adjust_learning_rate(opt, concat_optimizer, epoch)
 
@@ -605,26 +657,28 @@ def main(opt=None):
         losses, accs = train(train_loader, model, classifiers, criterion,
                           optimizers, epoch, opt)
         time2 = time.time()
-        print('Train epoch {}, total time {:.2f}, superclass loss early {:.3f}, superclass loss deep {:.3f}, class loss {:.3f}, concat loss {:.3f}, '
-              'superclass accuracy early {:.3f}, superclass accuracy deep {:.3f}, class accuracy {:.3f}, concat accuracy {:.3f}'.format(
-               epoch, time2 - time1, losses[0], losses[1], losses[2], losses[3], accs[0], accs[1], accs[2], accs[3]))
+        print('Train epoch {}, total time {:.2f}, superclass loss early {:.3f}, superclass loss deep {:.3f}, superclass loss concat {:.3f}, class loss {:.3f}, concat loss {:.3f}, '
+              'superclass accuracy early {:.3f}, superclass accuracy deep {:.3f}, superclass accuracy concat {:.3f}, class accuracy {:.3f}, concat accuracy {:.3f}'.format(
+               epoch, time2 - time1, losses[0], losses[1], losses[2], losses[3], losses[4], accs[0], accs[1], accs[2], accs[3], accs[4]))
 
         # eval for one epoch
         val_losses, val_accs = validate(val_loader, model, classifiers, criterion, opt)
-        if val_accs[3] > best_acc:
-            best_acc = val_accs[3]
+        if val_accs[4] > best_acc:
+            best_acc = val_accs[4]
         
         # Store metrics
         new_row = pd.DataFrame([{
             'epoch': epoch,
             'superclass_loss_early': val_losses[0],
             'superclass_loss_deep': val_losses[1],
-            'class_loss': val_losses[2],
-            'concat_loss': val_losses[3],
+            'superclass_loss_concat': val_losses[2],
+            'class_loss': val_losses[3],
+            'concat_loss': val_losses[4],
             'superclass_acc_early': val_accs[0],
             'superclass_acc_deep': val_accs[1],
-            'class_acc': val_accs[2],
-            'concat_acc': val_accs[3]
+            'superclass_acc_concat': val_accs[2],
+            'class_acc': val_accs[3],
+            'concat_acc': val_accs[4]
         }])
         metrics_df = pd.concat([metrics_df, new_row], ignore_index=True)
         
