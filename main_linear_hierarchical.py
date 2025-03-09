@@ -172,6 +172,7 @@ def set_model(opt):
     else:  # resnet50, resnet101
         early_dim = 512  # 512 for layer2 (expansion=4)
         deep_dim = 2048  # 2048 for layer4 (expansion=4)
+    early_dim = deep_dim
     concat_dim = early_dim + deep_dim
 
     # Five classifiers:
@@ -183,7 +184,6 @@ def set_model(opt):
     
     # Since is_output_layer=[False, False, False, True], there is only one output layer
     # Set early_dim equal to deep_dim
-    early_dim = deep_dim
     superclass_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_superclass, feat_dim=early_dim)
     class_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_cls, feat_dim=deep_dim)
     concat_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_cls, feat_dim=concat_dim)
