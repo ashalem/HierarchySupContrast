@@ -162,7 +162,7 @@ def set_model(opt):
         name=opt.model,
         head='mlp',
         feat_dim=128,  # Set to 128 to match checkpoint
-        is_output_layer=[False, False, False, True],
+        is_output_layer=[False, True, False, True],
     )
     criterion = torch.nn.CrossEntropyLoss()
 
@@ -173,7 +173,7 @@ def set_model(opt):
     else:  # resnet50, resnet101
         early_dim = 512  # 512 for layer2 (expansion=4)
         deep_dim = 2048  # 2048 for layer4 (expansion=4)
-    early_dim = deep_dim
+    # early_dim = deep_dim
     concat_dim = early_dim + deep_dim
 
     # Five classifiers:
@@ -261,15 +261,15 @@ def train(train_loader, model, classifiers, criterion, optimizers, epoch, opt):
             features = model.encoder(images)  # List of features from different levels
 
         # Superclass classification from level 1 features (64-dim)
-        superclass_output = superclass_classifier(features[0].detach())
+        superclass_output = superclass_classifier(features[-1].detach())
         superclass_loss = criterion(superclass_output, superclass_labels)
 
         # Class classification from level 2 features (128-dim)
-        class_output = class_classifier(features[0].detach())
+        class_output = class_classifier(features[-1].detach())
         class_loss = criterion(class_output, class_labels)
 
         # Class classification from concatenated features
-        concat_features = torch.cat([features[0].detach(), features[0].detach()], dim=1)  # Concatenate level 1 and 2
+        concat_features = torch.cat([features[0].detach(), features[-1].detach()], dim=1)  # Concatenate level 1 and 2
         concat_output = concat_classifier(concat_features)
         concat_loss = criterion(concat_output, class_labels)
 
@@ -354,15 +354,15 @@ def validate(val_loader, model, classifiers, criterion, opt):
             features = model.encoder(images)  # List of features from different levels
 
             # Superclass classification from level 1 features (64-dim)
-            superclass_output = superclass_classifier(features[0])
+            superclass_output = superclass_classifier(features[-1])
             superclass_loss = criterion(superclass_output, superclass_labels)
 
             # Class classification from level 2 features (128-dim)
-            class_output = class_classifier(features[0])
+            class_output = class_classifier(features[-1])
             class_loss = criterion(class_output, class_labels)
 
             # Class classification from concatenated features
-            concat_features = torch.cat([features[0], features[0]], dim=1)  # Concatenate level 1 and 2
+            concat_features = torch.cat([features[0], features[-1]], dim=1)  # Concatenate level 1 and 2
             concat_output = concat_classifier(concat_features)
             concat_loss = criterion(concat_output, class_labels)
 
@@ -485,9 +485,9 @@ def visualize_predictions(val_loader, model, classifiers, epoch, num_images=4):
         features = model.encoder(images.cuda())
         
         # Get predictions from each classifier
-        superclass_output = superclass_classifier(features[0])
-        class_output = class_classifier(features[0])
-        concat_features = torch.cat([features[0], features[0]], dim=1)
+        superclass_output = superclass_classifier(features[-1])
+        class_output = class_classifier(features[-1])
+        concat_features = torch.cat([features[0], features[-1]], dim=1)
         concat_output = concat_classifier(concat_features)
         
         # Get predicted classes

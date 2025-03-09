@@ -132,7 +132,7 @@ def set_model(opt):
         name=opt.model,
         head='mlp',
         feat_dim=opt.feat_dim,
-        is_output_layer=[False, False, False, True],
+        is_output_layer=[False, True, False, True],
     )
     
     # Parse level weights from string
@@ -218,7 +218,7 @@ def train(train_loader, model, criterion, optimizer, epoch, opt):
     return losses.avg
 
 def main(opt=None):
-    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet50', '--learning_rate', '0.5', '--batch_size', '512', '--epochs', '200', '--level_weights', '1', '--temp', '0.1']
+    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet50', '--learning_rate', '0.5', '--batch_size', '1024', '--epochs', '300', '--temp', '0.1']
     if opt is None:
         opt = parse_option()
 
