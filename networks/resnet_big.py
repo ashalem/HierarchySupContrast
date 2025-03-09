@@ -181,8 +181,10 @@ class HierarchicalResNet(ResNet):
         self.is_output_layer = is_output_layer
         self.num_output_layers = sum(is_output_layer)
         
-        # Output dimensions of each layer
-        self.dims = [64, 128, 256, 512]  # Output dimensions of each layer
+        # Output dimensions of each layer based on block expansion
+        expansion = block_class.expansion
+        self.dims = [64 * expansion, 128 * expansion, 256 * expansion, 512 * expansion]  # Output dimensions of each layer
+        print(f'HierarchicalResNet with block {block_class.__name__} and num_blocks {num_blocks} has output dimensions {self.dims}')
     
     def forward(self, x):
         features = []
@@ -192,25 +194,25 @@ class HierarchicalResNet(ResNet):
         out = self.layer1(out)
         if self.is_output_layer[0]:
             prepared_out = self.avgpool(out)
-            prepared_out = torch.flatten(prepared_out, 1)  # [B, 64]
+            prepared_out = torch.flatten(prepared_out, 1)  # [B, 64*expansion]
             features.append(prepared_out)
             
         out = self.layer2(out)
         if self.is_output_layer[1]:
             prepared_out = self.avgpool(out)
-            prepared_out = torch.flatten(prepared_out, 1)  # [B, 128]
+            prepared_out = torch.flatten(prepared_out, 1)  # [B, 128*expansion]
             features.append(prepared_out)
             
         out = self.layer3(out)
         if self.is_output_layer[2]:
             prepared_out = self.avgpool(out)
-            prepared_out = torch.flatten(prepared_out, 1)  # [B, 256]
+            prepared_out = torch.flatten(prepared_out, 1)  # [B, 256*expansion]
             features.append(prepared_out)
         
         out = self.layer4(out)
         if self.is_output_layer[3]:
             prepared_out = self.avgpool(out)
-            prepared_out = torch.flatten(prepared_out, 1)  # [B, 512]
+            prepared_out = torch.flatten(prepared_out, 1)  # [B, 512*expansion]
             features.append(prepared_out)
 
         return features  # Return list of features with different dimensions
@@ -288,15 +290,30 @@ class HierarchicalSupConResNet(SupConResNet):
         super(HierarchicalSupConResNet, self).__init__(name, head, feat_dim)
         self.num_output_layers = sum(is_output_layer)
         
+        # Determine block class and num_blocks based on the model name
+        if name in ['resnet18', 'resnet34']:
+            block_class = BasicBlock
+            if name == 'resnet18':
+                num_blocks = [2, 2, 2, 2]
+            else:  # resnet34
+                num_blocks = [3, 4, 6, 3]
+        else:  # resnet50, resnet101
+            block_class = Bottleneck
+            if name == 'resnet50':
+                num_blocks = [3, 4, 6, 3]
+            else:  # resnet101
+                num_blocks = [3, 4, 23, 3]
+        
         # Replace the encoder with our hierarchical version
         self.encoder = HierarchicalResNet(
-            BasicBlock, [2, 2, 2, 2],
+            block_class=block_class,
+            num_blocks=num_blocks,
             is_output_layer=is_output_layer
         )
         
         # Create separate MLP heads for each output layer
         self.heads = nn.ModuleList()
-        dims = self.encoder.dims  # [64, 128, 256, 512]
+        dims = self.encoder.dims  # Will be scaled by expansion factor automatically
         head_idx = 0
         for i, is_output in enumerate(is_output_layer):
             if not is_output:

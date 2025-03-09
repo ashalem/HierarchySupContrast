@@ -157,31 +157,36 @@ def parse_option():
 
 
 def set_model(opt):
-    # model = HierarchicalSupConResNet(
-    #     name=opt.model,
-    #     head='mlp',
-    #     feat_dim=128,  # Set to 128 to match checkpoint
-    #     is_output_layer=[False, True, False, True]  # Enable second output layer to match checkpoint
-    # )
-    
-    # Define model with linear outputs at layer 4
     model = HierarchicalSupConResNet(
         name=opt.model,
         head='mlp',
         feat_dim=128,  # Set to 128 to match checkpoint
-        is_output_layer=[False, False, False, True]  # Enable second output layer to match checkpoint
+        is_output_layer=[False, False, False, True],
     )
     criterion = torch.nn.CrossEntropyLoss()
 
-    # Three classifiers:
-    # 1. Superclass classifier
-    # 2. Fine-grained classifier from fine features
-    # 3. Fine-grained classifier from concatenated features
+    # Get the model's output dimensions based on architecture
+    if opt.model in ['resnet18', 'resnet34']:
+        early_dim = 128  # 128 for layer2 (expansion=1)
+        deep_dim = 512   # 512 for layer4 (expansion=1)
+    else:  # resnet50, resnet101
+        early_dim = 512  # 512 for layer2 (expansion=4)
+        deep_dim = 2048  # 2048 for layer4 (expansion=4)
+    concat_dim = early_dim + deep_dim
+
+    # Five classifiers:
+    # 1. Superclass classifier using early features (128-dim for ResNet18/34, 512-dim for ResNet50/101)
+    # 2. Superclass classifier using deep features (512-dim for ResNet18/34, 2048-dim for ResNet50/101)
+    # 3. Superclass classifier using concatenated features (640-dim for ResNet18/34, 2560-dim for ResNet50/101)
+    # 4. Fine-grained classifier from deep features (512-dim for ResNet18/34, 2048-dim for ResNet50/101)
+    # 5. Fine-grained classifier from concatenated features (640-dim for ResNet18/34, 2560-dim for ResNet50/101)
     
-    
-    superclass_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_superclass, feat_dim=512)
-    class_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_cls, feat_dim=512)
-    concat_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_cls, feat_dim=1024)  # 128*2 features
+    # Since is_output_layer=[False, False, False, True], there is only one output layer
+    # Set early_dim equal to deep_dim
+    early_dim = deep_dim
+    superclass_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_superclass, feat_dim=early_dim)
+    class_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_cls, feat_dim=deep_dim)
+    concat_classifier = LinearClassifier(name=opt.model, num_classes=opt.n_cls, feat_dim=concat_dim)
 
     ckpt = torch.load(opt.ckpt, map_location='cpu')
     state_dict = ckpt['model']
@@ -196,7 +201,9 @@ def set_model(opt):
                 new_state_dict[k] = v
             state_dict = new_state_dict
         model = model.cuda()
-        superclass_classifier = superclass_classifier.cuda()
+        superclass_early = superclass_early.cuda()
+        superclass_deep = superclass_deep.cuda()
+        superclass_concat = superclass_concat.cuda()
         class_classifier = class_classifier.cuda()
         concat_classifier = concat_classifier.cuda()
         criterion = criterion.cuda()
@@ -206,7 +213,7 @@ def set_model(opt):
     else:
         raise NotImplementedError('This code requires GPU')
 
-    return model, (superclass_classifier, class_classifier, concat_classifier), criterion
+    return model, (superclass_early, superclass_deep, superclass_concat, class_classifier, concat_classifier), criterion
 
 
 def train(train_loader, model, classifiers, criterion, optimizers, epoch, opt):
@@ -517,7 +524,7 @@ def visualize_predictions(val_loader, model, classifiers, epoch, num_images=4):
     plt.close()
 
 def main(opt=None):
-    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet18', '--learning_rate', '1', '--batch_size', '512', '--epochs', '200', '--ckpt', './save/ckpt_epoch_200.pth']
+    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet50', '--learning_rate', '1', '--batch_size', '512', '--epochs', '200', '--ckpt', './save/ckpt_epoch_200.pth']
     if opt is None:
         opt = parse_option()
     print(opt)
