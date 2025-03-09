@@ -201,9 +201,7 @@ def set_model(opt):
                 new_state_dict[k] = v
             state_dict = new_state_dict
         model = model.cuda()
-        superclass_early = superclass_early.cuda()
-        superclass_deep = superclass_deep.cuda()
-        superclass_concat = superclass_concat.cuda()
+        superclass_classifier = superclass_classifier.cuda()
         class_classifier = class_classifier.cuda()
         concat_classifier = concat_classifier.cuda()
         criterion = criterion.cuda()
@@ -213,7 +211,7 @@ def set_model(opt):
     else:
         raise NotImplementedError('This code requires GPU')
 
-    return model, (superclass_early, superclass_deep, superclass_concat, class_classifier, concat_classifier), criterion
+    return model, (superclass_classifier, class_classifier, concat_classifier), criterion
 
 
 def train(train_loader, model, classifiers, criterion, optimizers, epoch, opt):
