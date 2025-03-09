@@ -29,8 +29,8 @@ except ImportError:
 class CIFAR100Hierarchy(datasets.CIFAR100):
     """CIFAR100 dataset with hierarchical labels"""
     
-    def __init__(self, root, transform=None, download=False):
-        super().__init__(root=root, transform=transform, download=download)
+    def __init__(self, root, transform=None, train=True, download=False):
+        super().__init__(root=root, transform=transform, train=train, download=download)
         
         # Define the mapping of fine labels to coarse labels (20 superclasses)
         self.coarse_labels = torch.tensor([
@@ -64,10 +64,11 @@ def set_loader(opt):
     # Create new datasets with hierarchical labels
     train_dataset = CIFAR100Hierarchy(root=opt.data_folder,
                                     transform=train_transform,
+                                    train=True,  # Explicitly set train=True
                                     download=True)
     val_dataset = CIFAR100Hierarchy(root=opt.data_folder,
                                   transform=val_transform,
-                                  download=True)
+                                  train=False)
     
     # Create new data loaders with the hierarchical datasets
     train_loader = torch.utils.data.DataLoader(
