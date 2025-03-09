@@ -523,7 +523,7 @@ def visualize_predictions(val_loader, model, classifiers, epoch, num_images=4):
     plt.close()
 
 def main(opt=None):
-    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet50', '--learning_rate', '1', '--batch_size', '512', '--epochs', '200', '--ckpt', './save/ckpt_epoch_200.pth']
+    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet50', '--learning_rate', '0.1', '--batch_size', '512', '--epochs', '300', '--ckpt', './save/ckpt_epoch_200.pth']
     if opt is None:
         opt = parse_option()
     print(opt)
