@@ -55,6 +55,7 @@ def parse_option():
     parser.add_argument('--warm', action='store_true',
                         help='warm-up for large batch training')
     parser.add_argument('--ckpt', type=str, default='./save/ckpt_epoch_200.pth',
+                        help='checkpoint path')
     opt = parser.parse_args()
 
     # set the path according to the environment
