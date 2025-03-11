@@ -54,7 +54,7 @@ def parse_option():
                         help='using cosine annealing')
     parser.add_argument('--warm', action='store_true',
                         help='warm-up for large batch training')
-
+    parser.add_argument('--ckpt', type=str, default='./save/ckpt_epoch_200.pth',
     opt = parser.parse_args()
 
     # set the path according to the environment
@@ -226,7 +226,7 @@ def train(train_loader, model, criterion, optimizer, epoch, opt):
     return losses.avg
 
 def main(opt=None):
-    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet50', '--learning_rate', '0.5', '--batch_size', '512', '--epochs', '300', '--temp', '0.1']
+    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet50', '--learning_rate', '0.5', '--batch_size', '512', '--epochs', '300', '--temp', '0.1', '--ckpt', './save/ckpt_epoch_200.pth']
     if opt is None:
         opt = parse_option()
 
