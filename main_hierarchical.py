@@ -146,13 +146,21 @@ def set_model(opt):
         contrast_mode='all',
     )
 
+    ckpt = torch.load(opt.ckpt, map_location='cpu')
+    state_dict = ckpt['model']
     if torch.cuda.is_available():
         if torch.cuda.device_count() > 1:
             model.encoder = torch.nn.DataParallel(model.encoder)
+        else:
+            new_state_dict = {}
+            for k, v in state_dict.items():
+                k = k.replace("module.", "")
+                new_state_dict[k] = v
+            state_dict = new_state_dict
         model = model.cuda()
         criterion = criterion.cuda()
         cudnn.benchmark = True
-
+        model.load_state_dict(state_dict)
     return model, criterion
 
 def train(train_loader, model, criterion, optimizer, epoch, opt):
