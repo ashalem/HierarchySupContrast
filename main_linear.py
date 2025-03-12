@@ -227,9 +227,12 @@ def validate(val_loader, model, classifier, criterion, opt):
 
 
 def main():
+    
     best_acc = 0
-    opt = parse_option()
-
+    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet50', '--learning_rate', '0.5', '--batch_size', '512', '--epochs', '200', '--temp', '0.1', '--ckpt', './save/ckpt_epoch_200.pth']
+    if opt is None:
+        opt = parse_option()
+        
     # build data loader
     train_loader, val_loader = set_loader(opt)
 

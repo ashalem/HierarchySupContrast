@@ -252,7 +252,7 @@ def train(train_loader, model, criterion, optimizer, epoch, opt):
 
 
 def main(opt=None):
-    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet18', '--learning_rate', '0.5', '--batch_size', '512', '--epochs', '100']
+    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet50', '--learning_rate', '0.5', '--batch_size', '512', '--epochs', '200', '--temp', '0.1']
     if opt is None:
         opt = parse_option()
 
