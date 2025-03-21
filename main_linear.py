@@ -4,6 +4,7 @@ import sys
 import argparse
 import time
 import math
+import random
 
 import torch
 import torch.backends.cudnn as cudnn
@@ -230,6 +231,88 @@ def validate(val_loader, model, classifier, criterion, opt):
     return losses.avg, top1.avg
 
 
+def visualize_predictions(val_loader, model, classifier, epoch, num_images=4):
+    """Visualize predictions on random test images"""
+    # Create output directory if it doesn't exist
+    os.makedirs('plots', exist_ok=True)
+    
+    model.eval()
+    classifier.eval()
+    
+    # CIFAR-100 class names (if using CIFAR-100)
+    if hasattr(val_loader.dataset, 'classes'):
+        class_names = val_loader.dataset.classes
+    else:
+        # For CIFAR-100
+        class_names = [
+            'apple', 'aquarium_fish', 'baby', 'bear', 'beaver', 'bed', 'bee', 'beetle', 'bicycle', 'bottle',
+            'bowl', 'boy', 'bridge', 'bus', 'butterfly', 'camel', 'can', 'castle', 'caterpillar', 'cattle',
+            'chair', 'chimpanzee', 'clock', 'cloud', 'cockroach', 'couch', 'crab', 'crocodile', 'cup', 'dinosaur',
+            'dolphin', 'elephant', 'flatfish', 'forest', 'fox', 'girl', 'hamster', 'house', 'kangaroo', 'keyboard',
+            'lamp', 'lawn_mower', 'leopard', 'lion', 'lizard', 'lobster', 'man', 'maple_tree', 'motorcycle', 'mountain',
+            'mouse', 'mushroom', 'oak_tree', 'orange', 'orchid', 'otter', 'palm_tree', 'pear', 'pickup_truck', 'pine_tree',
+            'plain', 'plate', 'poppy', 'porcupine', 'possum', 'rabbit', 'raccoon', 'ray', 'road', 'rocket',
+            'rose', 'sea', 'seal', 'shark', 'shrew', 'skunk', 'skyscraper', 'snail', 'snake', 'spider',
+            'squirrel', 'streetcar', 'sunflower', 'sweet_pepper', 'table', 'tank', 'telephone', 'television', 'tiger', 'tractor',
+            'train', 'trout', 'tulip', 'turtle', 'wardrobe', 'whale', 'willow_tree', 'wolf', 'woman', 'worm'
+        ]
+    
+    # Get a batch of images
+    dataiter = iter(val_loader)
+    images, labels = next(dataiter)
+    
+    # Select random indices
+    batch_size = images.shape[0]
+    indices = random.sample(range(batch_size), min(num_images, batch_size))
+    
+    # Create figure
+    fig, axes = plt.subplots(1, num_images, figsize=(16, 5), dpi=200)
+    
+    # CIFAR mean and std for denormalization
+    mean = torch.tensor((0.5071, 0.4867, 0.4408))
+    std = torch.tensor((0.2675, 0.2565, 0.2761))
+    
+    with torch.no_grad():
+        # Get features and predictions
+        features = model.encoder(images.cuda())
+        outputs = classifier(features)
+        
+        # Get predicted classes
+        _, predicted = outputs.cpu().max(1)
+    
+    for idx, i in enumerate(indices):
+        # Denormalize image
+        img = images[i].cpu()
+        img = img * std[:, None, None] + mean[:, None, None]
+        img = torch.clamp(img, 0, 1)
+        
+        # Plot image
+        axes[idx].imshow(img.permute(1, 2, 0))
+        axes[idx].axis('off')
+        
+        # Get class names
+        true_class = class_names[labels[i]]
+        pred_class = class_names[predicted[i]]
+        
+        # Add predictions as title
+        title = f'True: {true_class}\nPred: {pred_class}'
+        if labels[i] == predicted[i]:
+            title += ' ✓'
+        else:
+            title += ' ✗'
+            
+        axes[idx].set_title(title, fontsize=10)
+    
+    plt.suptitle(f'Predictions at Epoch {epoch}', fontsize=16, fontweight='bold', y=0.98)
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.85)
+    plt.savefig(f'plots/predictions_epoch_{epoch}.png')
+    plt.savefig(f'plots/predictions_latest.png')  # Always save the latest version
+    plt.close()
+    
+    print(f"Prediction visualizations saved to 'plots/predictions_epoch_{epoch}.png'")
+
+
 def plot_metrics(df, epoch):
     """
     Plot training and validation metrics with enhanced visualizations.
@@ -306,7 +389,7 @@ def plot_metrics(df, epoch):
 
 def main():
     best_acc = 0
-    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet50', '--learning_rate', '0.5', '--batch_size', '512', '--epochs', '200', '--temp', '0.1', '--ckpt', './save/ckpt_epoch_200.pth']
+    sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet50', '--learning_rate', '0.1', '--batch_size', '512', '--epochs', '200', '--ckpt', './save/ckpt_epoch_200.pth']
     opt = parse_option()
     
     # Create dataframe to store metrics
@@ -326,6 +409,12 @@ def main():
     # Get initial validation metrics
     val_loss, val_acc = validate(val_loader, model, classifier, criterion, opt)
     
+    # Ensure values are detached from CUDA and converted to float
+    if isinstance(val_acc, torch.Tensor):
+        val_acc = val_acc.detach().cpu().item()
+    if isinstance(val_loss, torch.Tensor):
+        val_loss = val_loss.detach().cpu().item()
+    
     # Store initial metrics (epoch 0)
     new_row = pd.DataFrame([{
         'epoch': 0,
@@ -339,6 +428,10 @@ def main():
     
     # Plot initial metrics
     plot_metrics(metrics_df, 0)
+    visualize_predictions(val_loader, model, classifier, 0)
+    
+    # Create a plots directory if it doesn't exist
+    os.makedirs('plots', exist_ok=True)
 
     # training routine
     for epoch in range(1, opt.epochs + 1):
@@ -357,6 +450,16 @@ def main():
         if val_acc > best_acc:
             best_acc = val_acc
         
+        # Ensure values are detached from CUDA and converted to float
+        if isinstance(train_acc, torch.Tensor):
+            train_acc = train_acc.detach().cpu().item()
+        if isinstance(train_loss, torch.Tensor):
+            train_loss = train_loss.detach().cpu().item()
+        if isinstance(val_acc, torch.Tensor):
+            val_acc = val_acc.detach().cpu().item()
+        if isinstance(val_loss, torch.Tensor):
+            val_loss = val_loss.detach().cpu().item()
+            
         # Store metrics
         new_row = pd.DataFrame([{
             'epoch': epoch,
@@ -370,12 +473,16 @@ def main():
         
         # Plot metrics every 10 epochs and at the end
         if epoch % 10 == 0 or epoch == opt.epochs:
+            print(f"\nGenerating plots for epoch {epoch}")
             plot_metrics(metrics_df, epoch)
+            visualize_predictions(val_loader, model, classifier, epoch)
+            print(f"Plots saved for epoch {epoch}\n")
             
         # Save metrics to csv
         metrics_df.to_csv('training_metrics.csv', index=False)
 
     print('best accuracy: {:.2f}'.format(best_acc))
+    return best_acc
 
 
 if __name__ == '__main__':

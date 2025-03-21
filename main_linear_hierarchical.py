@@ -634,6 +634,11 @@ def main(opt=None):
     
     # Get initial test metrics
     val_losses, val_accs = validate(val_loader, model, classifiers, criterion, opt)
+    
+    # Ensure tensor values are detached from CUDA and converted to float
+    val_losses = [loss.detach().cpu().item() if isinstance(loss, torch.Tensor) else loss for loss in val_losses]
+    val_accs = [acc.detach().cpu().item() if isinstance(acc, torch.Tensor) else acc for acc in val_accs]
+    
     new_row = pd.DataFrame([{
         'epoch': 0,
         'superclass_loss': val_losses[0],
@@ -660,12 +665,22 @@ def main(opt=None):
         losses, accs = train(train_loader, model, classifiers, criterion,
                           optimizers, epoch, opt)
         time2 = time.time()
+        
+        # Ensure tensor values are detached from CUDA and converted to float
+        losses = [loss.detach().cpu().item() if isinstance(loss, torch.Tensor) else loss for loss in losses]
+        accs = [acc.detach().cpu().item() if isinstance(acc, torch.Tensor) else acc for acc in accs]
+        
         print('Train epoch {}, total time {:.2f}, superclass loss {:.3f}, class loss {:.3f}, concat loss {:.3f}, '
               'superclass accuracy {:.3f}, class accuracy {:.3f}, concat accuracy {:.3f}'.format(
                epoch, time2 - time1, losses[0], losses[1], losses[2], accs[0], accs[1], accs[2]))
 
         # eval for one epoch
         val_losses, val_accs = validate(val_loader, model, classifiers, criterion, opt)
+        
+        # Ensure tensor values are detached from CUDA and converted to float
+        val_losses = [loss.detach().cpu().item() if isinstance(loss, torch.Tensor) else loss for loss in val_losses]
+        val_accs = [acc.detach().cpu().item() if isinstance(acc, torch.Tensor) else acc for acc in val_accs]
+        
         if val_accs[2] > best_acc:
             best_acc = val_accs[2]
         
@@ -692,6 +707,7 @@ def main(opt=None):
         metrics_df.to_csv('training_metrics.csv', index=False)
             
     print('best accuracy: {:.3f}'.format(best_acc))
+    return best_acc
 
 
 if __name__ == '__main__':
