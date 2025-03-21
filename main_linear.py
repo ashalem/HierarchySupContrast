@@ -358,24 +358,15 @@ def plot_metrics(df, epoch):
     plt.legend(fontsize=12)
     plt.grid(True, linestyle='--', alpha=0.7)
     
-    # Plot learning rate
+    # Plot accuracies - logarithmic scale (error rate)
     plt.subplot(2, 2, 4)
-    if 'learning_rate' in df.columns:
-        plt.plot(df['epoch'], df['learning_rate'], 'g-', linewidth=2)
-        plt.title('Learning Rate vs Epoch', fontsize=14, fontweight='bold')
-        plt.xlabel('Epoch', fontsize=12)
-        plt.ylabel('Learning Rate', fontsize=12)
-        plt.grid(True, linestyle='--', alpha=0.7)
-    else:
-        # If learning rate is not tracked, show accuracy in log scale instead
-        plt.plot(df['epoch'], 100 - df['train_acc'], 'b-', linewidth=2, label='Train Error (100 - Acc)')
-        plt.plot(df['epoch'], 100 - df['val_acc'], 'r-', linewidth=2, label='Validation Error (100 - Acc)')
-        plt.title('Error Rate vs Epoch (Log Scale)', fontsize=14, fontweight='bold')
-        plt.xlabel('Epoch', fontsize=12)
-        plt.ylabel('Error Rate % (log scale)', fontsize=12)
-        plt.yscale('log')
-        plt.legend(fontsize=12)
-        plt.grid(True, linestyle='--', alpha=0.7)
+    plt.semilogy(df['epoch'], 100 - df['train_acc'], 'b-', linewidth=2, label='Train Error (100 - Acc)')
+    plt.semilogy(df['epoch'], 100 - df['val_acc'], 'r-', linewidth=2, label='Validation Error (100 - Acc)')
+    plt.title('Error Rate vs Epoch (Log Scale)', fontsize=14, fontweight='bold')
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Error Rate % (log scale)', fontsize=12)
+    plt.legend(fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.7)
     
     plt.tight_layout()
     plt.savefig(f'plots/metrics_epoch_{epoch}.png')
