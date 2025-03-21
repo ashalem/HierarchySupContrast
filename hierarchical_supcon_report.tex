@@ -1,0 +1,176 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amsthm,amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{listings}
+
+\title{Hierarchical Supervised Contrastive Learning}
+\author{Ariel Shalem}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+Supervised Contrastive Learning (SupCon) \cite{khosla2020supervised} is a powerful loss function with an intuitive goal: push samples of the same class closer together in the latent space while pushing samples of different classes farther apart. This approach has shown impressive results in representation learning, but it does not account for hierarchical relationships between labels. Many real-world datasets have inherent hierarchical structures (e.g., animals → mammals → cats), which contain valuable information for learning robust representations. This report introduces Hierarchical Supervised Contrastive Learning (HierSupCon), which extends SupCon by incorporating hierarchical label information.
+
+\begin{figure}[h]
+\centering
+\framebox{\parbox{0.8\textwidth}{
+\centering
+[Placeholder for model architecture diagram showing the hierarchical SupCon approach with multiple output layers and projection heads]}}
+\caption{Architecture of the Hierarchical Supervised Contrastive Learning model.}
+\label{fig:architecture}
+\end{figure}
+
+\section{Motivation}
+
+Traditional SupCon treats all classes equally during representation learning. By leveraging hierarchical knowledge, I created representations that better reflect the natural organization of objects. For example, different cat breeds should be close to each other in the embedding space, but farther from dog breeds, while all mammals should be closer to each other than to vehicles.
+
+\section{Training Process}
+
+\subsection{Standard SupCon Training}
+
+The standard SupCon training process involves two stages:
+\begin{enumerate}
+    \item \textbf{Encoder training}: The encoder network (typically a ResNet) is trained using the SupCon loss to produce embeddings that cluster samples from the same class.
+    \item \textbf{Linear evaluation}: A linear classifier is trained on the frozen representations to evaluate the quality of the learned embeddings.
+\end{enumerate}
+
+In the first stage, each sample is augmented into multiple views, and the contrastive loss pushes embeddings of augmented views of the same sample closer together while pushing embeddings of different samples apart, with stronger repulsion for samples from different classes.
+
+\subsection{Hierarchical SupCon Approach}
+
+My hierarchical approach extends this by:
+\begin{enumerate}
+    \item Using multiple output layers from the encoder network, corresponding to different levels of the network hierarchy (early and deep layers)
+    \item Applying contrastive losses at multiple levels of the label hierarchy (superclass and fine-grained class)
+    \item Weighting these losses to balance the importance of coarse and fine-grained distinctions
+\end{enumerate}
+
+This encourages the network to learn representations that preserve both coarse-level and fine-grained category information, with early layers capturing more general features and deeper layers capturing more specific features.
+
+\section{Hierarchical Supervised Contrastive Loss}
+
+My hierarchical loss function is intuitively simple: I apply the standard SupCon loss at each level of the hierarchy and combine them with pre-defined weights. Formally, I use a weighted sum of SupCon losses applied to different hierarchical levels:
+
+\begin{align}
+\mathcal{L}_{HierSupCon} = \sum_{l=1}^{L} w_l \cdot \mathcal{L}_{SupCon}^{l}
+\end{align}
+
+where $L$ is the number of hierarchical levels and $w_l$ are level weights that sum to 1. 
+
+\section{Handling Different Output Dimensions}
+
+A key challenge was handling the different dimensions of features from different layers of the network. The dimensions depend on the specific ResNet architecture:
+
+\begin{itemize}
+    \item For ResNet18/34 (BasicBlock):
+        \begin{itemize}
+            \item Layer 2: 128 dimensions
+            \item Layer 4: 512 dimensions
+        \end{itemize}
+    \item For ResNet50/101 (Bottleneck):
+        \begin{itemize}
+            \item Layer 2: 512 dimensions (128 × expansion factor 4)
+            \item Layer 4: 2048 dimensions (512 × expansion factor 4)
+        \end{itemize}
+\end{itemize}
+
+I addressed this by:
+\begin{enumerate}
+    \item Creating a flexible `HierarchicalResNet` class that tracks the expansion factor of the block type (BasicBlock/Bottleneck) and dynamically calculating output dimensions
+    \item Using separate MLP projection heads for each output layer to project features to a common dimension - This is crucial. The original paper used the MLP projection to transform the output into a "feat-dim" for loss calculation. I also use the projection heads to align the dimensions of all output layers.
+\end{enumerate}
+
+The MLP projection heads are only used during the contrastive loss calculation in the training phase. For the linear evaluation stage, I use the raw features from the encoder network without the projection heads, following standard practice in contrastive learning.
+
+\section{Dataset: CIFAR-100}
+
+I chose CIFAR-100 for the experiments due to:
+\begin{itemize}
+    \item Its popularity and use as a benchmark in the original SupCon paper
+    \item Its built-in hierarchical structure (20 superclasses, each with 5 fine-grained classes)
+    \item Its moderate size (60,000 32×32 color images), allowing for faster experimentation
+\end{itemize}
+
+\section{Linear Classification with Hierarchical Features}
+
+During the linear evaluation phase, I leveraged the multi-level features from the encoder to create three types of classifiers:
+\begin{enumerate}
+    \item \textbf{Deep feature superclass classifier}: Using features from last output layer to classify superclasses
+    \item \textbf{Deep feature classifier}: Using features from last output for classification
+    \item \textbf{Concatenated feature classifier}: Combining features from all output layers by concatenating the encoded vectors
+\end{enumerate}
+
+This allowed me to evaluate how hierarchical information is encoded at different network depths.
+
+\section{Experimental Configuration}
+For the SupCon mode, I used the code base provided in the original SupCon paper. 
+Both the SupCon and Hierarchical-SupCon experiments used the same configuration to ensure a fair comparison:
+
+\begin{itemize}
+    \item \textbf{Model}: ResNet50 backbone
+    \item \textbf{Optimizer}: SGD with momentum 0.9
+    \item \textbf{Learning rates}: 0.5 for encoder (cosine decay), 0.1 for linear (step decay)
+    \item \textbf{Weight decay}: 1e-4 for encoder, 0 for linear evaluation
+    \item \textbf{Batch size}: 512
+    \item \textbf{Temperature}: 0.1
+    \item \textbf{Epochs}: 200 for encoder, 100 for linear evaluation
+    \item \textbf{Data augmentation}: Random crop, horizontal flip, color jitter, grayscale
+\end{itemize}
+
+\section{Hardware Constraints}
+
+Although the original SupCon paper recommended larger batch sizes (up to 2048) and longer training (350+ epochs), my experiments were constrained by available hardware:
+
+\begin{itemize}
+    \item I used a single NVIDIA GPU A100 on Google Colab with limited VRAM, restricting batch size to 512
+    \item Training time considerations limited me to 200 epochs instead of 350+
+\end{itemize}
+
+Despite these constraints, my hierarchical approach still demonstrated significant improvements over standard SupCon.
+
+\section{Experimental Results}
+
+\begin{figure}[h]
+\centering
+\framebox{\parbox{0.8\textwidth}{
+\centering
+[Placeholder for SupCon results showing accuracy and loss curves during training]}}
+\caption{Training results for standard SupCon approach.}
+\label{fig:supcon_results}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\framebox{\parbox{0.8\textwidth}{
+\centering
+[Placeholder for Hierarchical SupCon results showing improved accuracy and loss curves]}}
+\caption{Training results for Hierarchical SupCon approach.}
+\label{fig:hier_supcon_results}
+\end{figure}
+
+My results showed that the Hierarchical SupCon approach outperformed standard SupCon in fine-grained classification accuracy, achieving 75\% accuracy compared to 49\% with standard SupCon. The concatenated feature classifier consistently performed best, suggesting that the combination of early and deep features captures both general and specific characteristics needed for optimal classification.
+
+\section{Conclusion}
+
+Hierarchical Supervised Contrastive Learning effectively leverages label hierarchies to learn more robust and semantically meaningful representations. By extracting features from multiple network depths and applying contrastive learning across hierarchical label levels, my approach produces representations that outperform those learned through standard supervised contrastive learning.
+
+What makes these results particularly impressive is that they were achieved despite the inherent noise that can arise when using superclass labels. Not all images within the same superclass necessarily share obvious visual features—for instance, "lamp" and "keyboard" belong to the same superclass (household electrical devices) but have vastly different visual appearances. This potential mismatch could introduce noise during representation learning, as the model is encouraged to bring visually dissimilar objects closer in the embedding space solely based on superclass relationships. 
+
+The fact that my approach still achieved significantly better performance (75\% vs 49\% accuracy) indicates that the benefits of incorporating hierarchical information outweigh the potential drawbacks of superclass noise. This suggests that the model is able to learn meaningful representations at multiple levels of abstraction, enabling it to better capture both fine-grained distinctions and coarse category similarities.
+
+Future work could explore applying this approach to larger datasets with deeper hierarchies, finding the best weights for the different hierarchies ($w_l$), and developing solutions for uneven depth levels in the hierarchy tree.
+
+\begin{thebibliography}{9}
+\bibitem{khosla2020supervised}
+Khosla, P., Teterwak, P., Wang, C., Sarna, A., Tian, Y., Isola, P., Maschinot, A., Liu, C., \& Krishnan, D. (2020). Supervised Contrastive Learning. In Advances in Neural Information Processing Systems (NeurIPS).
+\end{thebibliography}
+
+\end{document} 

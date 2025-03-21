@@ -4,6 +4,7 @@ import sys
 import argparse
 import time
 import math
+import os
 
 import torch
 import torch.backends.cudnn as cudnn
@@ -406,38 +407,104 @@ def validate(val_loader, model, classifiers, criterion, opt):
 
 
 def plot_metrics(df, epoch):
-    """Plot loss and accuracy curves"""
-    plt.figure(figsize=(15, 5))
+    """Plot loss and accuracy curves with enhanced visualizations"""
+    # Create output directory if it doesn't exist
+    os.makedirs('plots', exist_ok=True)
     
-    # Plot losses
-    plt.subplot(1, 2, 1)
-    plt.plot(df['epoch'], df['superclass_loss'], label='Superclass')
-    plt.plot(df['epoch'], df['class_loss'], label='Class')
-    plt.plot(df['epoch'], df['concat_loss'], label='Concat')
-    plt.title('Test Loss vs Epoch')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.legend()
-    plt.grid(True)
+    # Linear scale plots
+    plt.figure(figsize=(20, 15), dpi=300)
     
-    # Plot accuracies
-    plt.subplot(1, 2, 2)
-    plt.plot(df['epoch'], df['superclass_acc'], label='Superclass')
-    plt.plot(df['epoch'], df['class_acc'], label='Class')
-    plt.plot(df['epoch'], df['concat_acc'], label='Concat')
-    plt.title('Test Accuracy vs Epoch')
-    plt.xlabel('Epoch')
-    plt.ylabel('Accuracy')
-    plt.legend()
-    plt.grid(True)
+    # Plot losses - linear scale
+    plt.subplot(2, 3, 1)
+    plt.plot(df['epoch'], df['superclass_loss'], 'r-', linewidth=2, label='Superclass')
+    plt.plot(df['epoch'], df['class_loss'], 'g-', linewidth=2, label='Class')
+    plt.plot(df['epoch'], df['concat_loss'], 'b-', linewidth=2, label='Concat')
+    plt.title('Test Loss vs Epoch (Linear Scale)', fontsize=14, fontweight='bold')
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Loss', fontsize=12)
+    plt.legend(fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.7)
+    
+    # Plot accuracies - linear scale
+    plt.subplot(2, 3, 2)
+    plt.plot(df['epoch'], df['superclass_acc'], 'r-', linewidth=2, label='Superclass')
+    plt.plot(df['epoch'], df['class_acc'], 'g-', linewidth=2, label='Class')
+    plt.plot(df['epoch'], df['concat_acc'], 'b-', linewidth=2, label='Concat')
+    plt.title('Test Accuracy vs Epoch (Linear Scale)', fontsize=14, fontweight='bold')
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Accuracy (%)', fontsize=12)
+    plt.legend(fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.7)
+    
+    # Plot error rates - linear scale
+    plt.subplot(2, 3, 3)
+    plt.plot(df['epoch'], 100 - df['superclass_acc'], 'r-', linewidth=2, label='Superclass Error')
+    plt.plot(df['epoch'], 100 - df['class_acc'], 'g-', linewidth=2, label='Class Error')
+    plt.plot(df['epoch'], 100 - df['concat_acc'], 'b-', linewidth=2, label='Concat Error')
+    plt.title('Error Rate vs Epoch (Linear Scale)', fontsize=14, fontweight='bold')
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Error Rate (%)', fontsize=12)
+    plt.legend(fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.7)
+    
+    # Plot losses - logarithmic scale
+    plt.subplot(2, 3, 4)
+    plt.semilogy(df['epoch'], df['superclass_loss'], 'r-', linewidth=2, label='Superclass')
+    plt.semilogy(df['epoch'], df['class_loss'], 'g-', linewidth=2, label='Class')
+    plt.semilogy(df['epoch'], df['concat_loss'], 'b-', linewidth=2, label='Concat')
+    plt.title('Test Loss vs Epoch (Log Scale)', fontsize=14, fontweight='bold')
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Loss (log scale)', fontsize=12)
+    plt.legend(fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.7)
+    
+    # Plot accuracies comparison
+    plt.subplot(2, 3, 5)
+    # Calculate accuracy improvement relative to class accuracy
+    if 'class_acc_baseline' in df.columns:
+        plt.plot(df['epoch'], df['superclass_acc'] - df['class_acc_baseline'], 'r-', linewidth=2, 
+                 label='Superclass vs Baseline')
+        plt.plot(df['epoch'], df['class_acc'] - df['class_acc_baseline'], 'g-', linewidth=2, 
+                 label='Class vs Baseline')
+        plt.plot(df['epoch'], df['concat_acc'] - df['class_acc_baseline'], 'b-', linewidth=2, 
+                 label='Concat vs Baseline')
+        plt.title('Accuracy Improvement vs Baseline', fontsize=14, fontweight='bold')
+    else:
+        # Just show the relative improvement of concat over class
+        plt.plot(df['epoch'], df['concat_acc'] - df['class_acc'], 'b-', linewidth=2, 
+                 label='Concat vs Class')
+        plt.title('Concat Accuracy Improvement vs Class', fontsize=14, fontweight='bold')
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Accuracy Improvement (%)', fontsize=12)
+    plt.axhline(y=0, color='k', linestyle='--', alpha=0.5)
+    plt.legend(fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.7)
+    
+    # Plot error rates - logarithmic scale
+    plt.subplot(2, 3, 6)
+    plt.semilogy(df['epoch'], 100 - df['superclass_acc'], 'r-', linewidth=2, label='Superclass Error')
+    plt.semilogy(df['epoch'], 100 - df['class_acc'], 'g-', linewidth=2, label='Class Error')
+    plt.semilogy(df['epoch'], 100 - df['concat_acc'], 'b-', linewidth=2, label='Concat Error')
+    plt.title('Error Rate vs Epoch (Log Scale)', fontsize=14, fontweight='bold')
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Error Rate % (log scale)', fontsize=12)
+    plt.legend(fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.7)
     
     plt.tight_layout()
-    plt.savefig(f'metrics_epoch_{epoch}.png')
-    plt.show()
+    plt.savefig(f'plots/hierarchical_metrics_epoch_{epoch}.png')
+    plt.savefig(f'plots/hierarchical_metrics_latest.png')  # Always save the latest version
+    
+    # Close the figure to free memory
     plt.close()
+    
+    print(f"Hierarchical plots saved to 'plots/hierarchical_metrics_epoch_{epoch}.png'")
 
 def visualize_predictions(val_loader, model, classifiers, epoch, num_images=4):
     """Visualize predictions on random test images"""
+    # Create output directory if it doesn't exist
+    os.makedirs('plots', exist_ok=True)
+    
     model.eval()
     superclass_classifier, class_classifier, concat_classifier = classifiers
     superclass_classifier.eval()
@@ -474,7 +541,7 @@ def visualize_predictions(val_loader, model, classifiers, epoch, num_images=4):
     indices = random.sample(range(batch_size), min(num_images, batch_size))
     
     # Create figure with a single row
-    fig, axes = plt.subplots(1, 4, figsize=(16, 4))
+    fig, axes = plt.subplots(1, num_images, figsize=(16, 5), dpi=200)
     
     # CIFAR100 mean and std for denormalization
     mean = torch.tensor((0.5071, 0.4867, 0.4408))
@@ -495,6 +562,10 @@ def visualize_predictions(val_loader, model, classifiers, epoch, num_images=4):
         _, class_preds = class_output.cpu().max(1)
         _, concat_preds = concat_output.cpu().max(1)
     
+    # Create color-coding for predictions
+    def get_color(pred, truth):
+        return 'green' if pred == truth else 'red'
+    
     for idx, i in enumerate(indices):
         # Denormalize image
         img = images[i].cpu()
@@ -512,15 +583,29 @@ def visualize_predictions(val_loader, model, classifiers, epoch, num_images=4):
         pred_class_name = class_names[class_preds[i]]
         pred_concat_class_name = class_names[concat_preds[i]]
         
-        # Add predictions as title
-        title = f'True:\nsuper={true_superclass_name} ({superclass_labels[i]})\nclass={true_class_name} ({class_labels[i]})\n'
-        title += f'Pred:\nsuper={pred_superclass_name} ({superclass_preds[i]})\nclass={pred_class_name} ({class_preds[i]})\nconcat={pred_concat_class_name} ({concat_preds[i]})'
-        axes[idx].set_title(title, fontsize=8)
+        # Add predictions as title with color-coding
+        superclass_color = get_color(superclass_preds[i], superclass_labels[i])
+        class_color = get_color(class_preds[i], class_labels[i])
+        concat_color = get_color(concat_preds[i], class_labels[i])
+        
+        title = f'Ground Truth:\n' + \
+                f'Super: {true_superclass_name}\n' + \
+                f'Class: {true_class_name}\n\n' + \
+                f'Predictions:\n' + \
+                f'Super: {pred_superclass_name} [{"✓" if superclass_preds[i] == superclass_labels[i] else "✗"}]\n' + \
+                f'Class: {pred_class_name} [{"✓" if class_preds[i] == class_labels[i] else "✗"}]\n' + \
+                f'Concat: {pred_concat_class_name} [{"✓" if concat_preds[i] == class_labels[i] else "✗"}]'
+                
+        axes[idx].set_title(title, fontsize=9)
     
+    plt.suptitle(f'Predictions at Epoch {epoch}', fontsize=16, fontweight='bold', y=0.98)
     plt.tight_layout()
-    plt.savefig(f'predictions_epoch_{epoch}.png')
-    plt.show()
+    plt.subplots_adjust(top=0.85)
+    plt.savefig(f'plots/hierarchical_predictions_epoch_{epoch}.png')
+    plt.savefig(f'plots/hierarchical_predictions_latest.png')  # Always save the latest version
     plt.close()
+    
+    print(f"Prediction visualizations saved to 'plots/hierarchical_predictions_epoch_{epoch}.png'")
 
 def main(opt=None):
     sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet50', '--learning_rate', '0.1', '--batch_size', '512', '--epochs', '300', '--ckpt', './save/ckpt_epoch_200.pth']

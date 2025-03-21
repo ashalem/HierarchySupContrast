@@ -13,6 +13,10 @@ from util import AverageMeter
 from util import adjust_learning_rate, warmup_learning_rate, accuracy
 from util import set_optimizer
 from networks.resnet_big import SupConResNet, LinearClassifier
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+import os
 
 try:
     import apex
@@ -226,13 +230,90 @@ def validate(val_loader, model, classifier, criterion, opt):
     return losses.avg, top1.avg
 
 
-def main():
+def plot_metrics(df, epoch):
+    """
+    Plot training and validation metrics with enhanced visualizations.
     
+    Args:
+        df: DataFrame containing the metrics
+        epoch: Current epoch number for saving the plot
+    """
+    # Create output directory if it doesn't exist
+    os.makedirs('plots', exist_ok=True)
+    
+    # Set higher DPI for better resolution
+    plt.figure(figsize=(20, 15), dpi=300)
+    
+    # Plot losses - linear scale
+    plt.subplot(2, 2, 1)
+    plt.plot(df['epoch'], df['train_loss'], 'b-', linewidth=2, label='Train Loss')
+    plt.plot(df['epoch'], df['val_loss'], 'r-', linewidth=2, label='Validation Loss')
+    plt.title('Loss vs Epoch (Linear Scale)', fontsize=14, fontweight='bold')
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Loss', fontsize=12)
+    plt.legend(fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    
+    # Plot accuracies - linear scale
+    plt.subplot(2, 2, 2)
+    plt.plot(df['epoch'], df['train_acc'], 'b-', linewidth=2, label='Train Accuracy')
+    plt.plot(df['epoch'], df['val_acc'], 'r-', linewidth=2, label='Validation Accuracy')
+    plt.title('Accuracy vs Epoch (Linear Scale)', fontsize=14, fontweight='bold')
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Accuracy (%)', fontsize=12)
+    plt.legend(fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.7)
+    
+    # Plot losses - logarithmic scale
+    plt.subplot(2, 2, 3)
+    plt.semilogy(df['epoch'], df['train_loss'], 'b-', linewidth=2, label='Train Loss')
+    plt.semilogy(df['epoch'], df['val_loss'], 'r-', linewidth=2, label='Validation Loss')
+    plt.title('Loss vs Epoch (Log Scale)', fontsize=14, fontweight='bold')
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Loss (log scale)', fontsize=12)
+    plt.legend(fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.7)
+    
+    # Plot learning rate
+    plt.subplot(2, 2, 4)
+    if 'learning_rate' in df.columns:
+        plt.plot(df['epoch'], df['learning_rate'], 'g-', linewidth=2)
+        plt.title('Learning Rate vs Epoch', fontsize=14, fontweight='bold')
+        plt.xlabel('Epoch', fontsize=12)
+        plt.ylabel('Learning Rate', fontsize=12)
+        plt.grid(True, linestyle='--', alpha=0.7)
+    else:
+        # If learning rate is not tracked, show accuracy in log scale instead
+        plt.plot(df['epoch'], 100 - df['train_acc'], 'b-', linewidth=2, label='Train Error (100 - Acc)')
+        plt.plot(df['epoch'], 100 - df['val_acc'], 'r-', linewidth=2, label='Validation Error (100 - Acc)')
+        plt.title('Error Rate vs Epoch (Log Scale)', fontsize=14, fontweight='bold')
+        plt.xlabel('Epoch', fontsize=12)
+        plt.ylabel('Error Rate % (log scale)', fontsize=12)
+        plt.yscale('log')
+        plt.legend(fontsize=12)
+        plt.grid(True, linestyle='--', alpha=0.7)
+    
+    plt.tight_layout()
+    plt.savefig(f'plots/metrics_epoch_{epoch}.png')
+    plt.savefig(f'plots/metrics_latest.png')  # Always save the latest version with a consistent name
+    
+    # Close the figure to free memory
+    plt.close()
+    
+    print(f"Plots saved to 'plots/metrics_epoch_{epoch}.png'")
+
+
+def main():
     best_acc = 0
     sys.argv = ['', '--dataset', 'cifar100', '--model', 'resnet50', '--learning_rate', '0.5', '--batch_size', '512', '--epochs', '200', '--temp', '0.1', '--ckpt', './save/ckpt_epoch_200.pth']
-    if opt is None:
-        opt = parse_option()
-        
+    opt = parse_option()
+    
+    # Create dataframe to store metrics
+    metrics_df = pd.DataFrame(columns=[
+        'epoch', 'train_loss', 'train_acc', 'val_loss', 'val_acc', 'learning_rate'
+    ])
+    
     # build data loader
     train_loader, val_loader = set_loader(opt)
 
@@ -241,6 +322,23 @@ def main():
 
     # build optimizer
     optimizer = set_optimizer(opt, classifier)
+    
+    # Get initial validation metrics
+    val_loss, val_acc = validate(val_loader, model, classifier, criterion, opt)
+    
+    # Store initial metrics (epoch 0)
+    new_row = pd.DataFrame([{
+        'epoch': 0,
+        'train_loss': float('nan'),  # No training loss for epoch 0
+        'train_acc': float('nan'),   # No training accuracy for epoch 0
+        'val_loss': val_loss,
+        'val_acc': val_acc,
+        'learning_rate': optimizer.param_groups[0]['lr']
+    }])
+    metrics_df = pd.concat([metrics_df, new_row], ignore_index=True)
+    
+    # Plot initial metrics
+    plot_metrics(metrics_df, 0)
 
     # training routine
     for epoch in range(1, opt.epochs + 1):
@@ -248,16 +346,34 @@ def main():
 
         # train for one epoch
         time1 = time.time()
-        loss, acc = train(train_loader, model, classifier, criterion,
+        train_loss, train_acc = train(train_loader, model, classifier, criterion,
                           optimizer, epoch, opt)
         time2 = time.time()
         print('Train epoch {}, total time {:.2f}, accuracy:{:.2f}'.format(
-            epoch, time2 - time1, acc))
+            epoch, time2 - time1, train_acc))
 
         # eval for one epoch
-        loss, val_acc = validate(val_loader, model, classifier, criterion, opt)
+        val_loss, val_acc = validate(val_loader, model, classifier, criterion, opt)
         if val_acc > best_acc:
             best_acc = val_acc
+        
+        # Store metrics
+        new_row = pd.DataFrame([{
+            'epoch': epoch,
+            'train_loss': train_loss,
+            'train_acc': train_acc,
+            'val_loss': val_loss,
+            'val_acc': val_acc,
+            'learning_rate': optimizer.param_groups[0]['lr']
+        }])
+        metrics_df = pd.concat([metrics_df, new_row], ignore_index=True)
+        
+        # Plot metrics every 10 epochs and at the end
+        if epoch % 10 == 0 or epoch == opt.epochs:
+            plot_metrics(metrics_df, epoch)
+            
+        # Save metrics to csv
+        metrics_df.to_csv('training_metrics.csv', index=False)
 
     print('best accuracy: {:.2f}'.format(best_acc))
 
